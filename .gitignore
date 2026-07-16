@@ -13,6 +13,7 @@ docs/memory/
 docs/tasks/
 docs/reports/
 docs/reviews/
+docs/pitch/
 
 # Secrets
 .env
