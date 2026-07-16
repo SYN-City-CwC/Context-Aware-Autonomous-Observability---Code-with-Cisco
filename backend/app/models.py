@@ -201,14 +201,49 @@ class Decision(BaseModel):
     leaf: Literal["attack", "fault"] | None = None
 
 
+class ActionSpec(BaseModel):
+    id: str
+    kind: Literal["observe", "edge_rate_limit", "circuit_break", "config_rollback"]
+    tier: Literal[0, 1, 2]
+    blast_radius: float
+    description: str
+    inverse_description: str
+
+
+class GateResult(BaseModel):
+    verdict: Literal["APPROVED", "NEEDS_REVIEW", "BLOCKED"]
+    reason: str
+
+
+class ActionTransition(BaseModel):
+    state: str
+    ts: datetime
+
+
+class AuditEntry(BaseModel):
+    ts: datetime
+    kind: Literal["decision", "gate", "rollout", "probe", "hitl", "revert"]
+    detail: str
+    action_id: str | None = None
+    decision_ts: datetime | None = None
+
+
 class ActionRecord(BaseModel):
     id: str
     ts: datetime
-    action: Literal["edge_rate_limit"]
+    action: Literal["observe", "edge_rate_limit", "circuit_break", "config_rollback"]
     target_kpi: str
     trigger_decision_ts: datetime
     approved: bool
     mttr_seconds: int | None = None
+    spec_id: str
+    tier: Literal[0, 1, 2]
+    state: str
+    transitions: list[ActionTransition] = Field(default_factory=list)
+    gate_reason: str
+    trigger_reason: str
+    probes: dict[str, float] = Field(default_factory=dict)
+    rollback: str | None = None
 
 
 class RcaRecord(BaseModel):
@@ -229,3 +264,4 @@ class Timeline(BaseModel):
     decisions: list[Decision]
     actions: list[ActionRecord] = Field(default_factory=list)
     rca_records: list[RcaRecord] = Field(default_factory=list)
+    audit_log: list[AuditEntry] = Field(default_factory=list)

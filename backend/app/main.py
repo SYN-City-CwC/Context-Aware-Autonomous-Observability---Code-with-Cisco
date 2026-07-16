@@ -67,6 +67,16 @@ def rca(narrate: int = 0) -> list[dict[str, Any]]:
     return [record.model_dump(mode="json") for record in records]
 
 
+@app.get("/api/actions")
+def actions() -> list[dict[str, Any]]:
+    return [item.model_dump(mode="json") for item in _timeline().actions]
+
+
+@app.get("/api/audit")
+def audit() -> list[dict[str, Any]]:
+    return [item.model_dump(mode="json") for item in _timeline().audit_log]
+
+
 @app.websocket("/ws/replay")
 async def replay(websocket: WebSocket) -> None:
     await websocket.accept()

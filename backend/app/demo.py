@@ -19,6 +19,9 @@ def main() -> None:
             f"{decision.evidence.kpi} ratio={decision.evidence.ratio:.1f} "
             f"confidence={decision.confidence:.2f} {decision.reason}"
         )
+    for action in timeline.actions:
+        for transition in action.transitions:
+            print(f"{transition.ts.strftime('%H:%M:%S')} ACTION {action.action} {transition.state} {action.gate_reason}")
     print(
         f"Summary: total ticks={len(timeline.ticks)}, "
         f"suppressions={suppressions}, alerts={alerts}"

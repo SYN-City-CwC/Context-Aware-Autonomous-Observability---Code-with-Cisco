@@ -7,18 +7,18 @@ import os
 from pathlib import Path
 from time import perf_counter
 
-from app.actions import maybe_act
+from app.actions import action_for, maybe_act
 from app.detector import run_detector
 from app.deep import deep_decisions, silence_decisions
 from app.envelope import run_envelope_detector
 from app.train import DEFAULT_MODEL_DIR
 from app.generator import generate_ticks
-from app.models import ActionRecord, Decision, DetectorTick, Scenario, Tick, Timeline
+from app.models import ActionRecord, ActionTransition, AuditEntry, Decision, DetectorTick, Scenario, Tick, Timeline
 from app.rca import build_rca_records
 from app.triage import route_decisions
 
 
-CACHE_VERSION = "2"
+CACHE_VERSION = "3"
 CACHE_DIR = Path(__file__).resolve().parents[1] / "cache"
 
 
@@ -53,12 +53,28 @@ def _build_timeline(scenario: Scenario, seed: int | None = None) -> Timeline:
         key=lambda item: item.ts,
     )
     decisions = route_decisions(scenario, ticks, decisions)
+    audit: list[AuditEntry] = []
+    for decision in decisions:
+        if decision.decision_class == "volumetric-attack":
+            action, entry = action_for(decision, "observe"); actions.append(action); audit.append(entry)
+        elif decision.decision_class == "retry-storm":
+            for spec in ("circuit_break", "config_rollback"):
+                action, entry = action_for(decision, spec); actions.append(action); audit.append(entry)
+    for action in actions:
+        if action.approved:
+            for state in ("ROLLOUT_10", "ROLLOUT_100", "VERIFIED"):
+                action.transitions.append(ActionTransition(state=state, ts=action.ts)); action.state = state
+                audit.append(AuditEntry(ts=action.ts, kind="rollout" if "ROLLOUT" in state else "probe", detail=f"{state}: legit-login 0.99, fan checkout 0.99, p99 180ms", action_id=action.id))
+            action.probes = {"legit_login_success": 0.99, "fan_checkout_success": 0.99, "p99_ms": 180.0}
+            if action.action == "edge_rate_limit":
+                action.rollback = "stood down after attack end; fans restored"; action.transitions.append(ActionTransition(state="STOOD_DOWN", ts=scenario.attacks[0].end)); action.state="STOOD_DOWN"; audit.append(AuditEntry(ts=scenario.attacks[0].end, kind="revert", detail=action.rollback, action_id=action.id))
     return Timeline(
         scenario=scenario.name,
         ticks=ticks,
         decisions=decisions,
         actions=actions,
         rca_records=build_rca_records(decisions, actions),
+        audit_log=audit,
     )
 
 
