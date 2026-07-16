@@ -177,6 +177,10 @@ export default function App() {
     socketRef.current?.send({ cmd: "speed", value });
   }
 
+  function narrateAll() {
+    fetch(`${backendHttpUrl()}/api/rca?narrate=1`).then((response) => response.json() as Promise<RcaRecord[]>).then(setRcaRecords);
+  }
+
   return (
     <div className="app-shell">
       <header className="topbar">
@@ -215,7 +219,7 @@ export default function App() {
 
       <main className="dashboard">
         <section className="kpi-pane" aria-label="KPI strips">
-          {(scenario?.kpis ?? []).map((kpi) => (
+          {(scenario?.kpis ?? []).filter((kpi) => kpi.layer !== "deep").map((kpi) => (
             <KpiStrip
               key={kpi.id}
               kpi={kpi}
@@ -223,6 +227,10 @@ export default function App() {
               tickSeconds={scenario?.tick_seconds ?? 10}
               highlight={highlights[kpi.id]}
             />
+          ))}
+          <h2 className="deep-heading">Deep telemetry</h2>
+          {(scenario?.kpis ?? []).filter((kpi) => kpi.layer === "deep").map((kpi) => (
+            <KpiStrip key={kpi.id} kpi={kpi} ticks={ticks} tickSeconds={scenario?.tick_seconds ?? 10} highlight={highlights[kpi.id]} />
           ))}
         </section>
 
@@ -244,7 +252,7 @@ export default function App() {
             )}
             {actions.map((action) => <ActionCard key={action.id} action={action} />)}
             <section className="rca-list" aria-label="RCA reports">
-              <p className="eyebrow">RCA reports</p>
+              <div className="feed-header"><p className="eyebrow">RCA reports</p><button onClick={narrateAll}>Narrate all</button></div>
               {rcaRecords.map((record) => <RcaCard key={record.incident_id} record={record} />)}
             </section>
           </div>
@@ -338,7 +346,7 @@ function ActionCard({ action }: { action: ActionRecord }) {
 }
 
 function RcaCard({ record }: { record: RcaRecord }) {
-  return <article className="decision-card rca"><div className="decision-main"><strong>{record.root_cause_class}</strong><span>{Math.round(record.confidence * 100)}% confidence</span></div><p>{record.evidence_chain[record.evidence_chain.length - 1]}</p></article>;
+  return <article className="decision-card rca"><div className="decision-main"><strong>{record.root_cause_class}</strong><span>{Math.round(record.confidence * 100)}% confidence</span>{record.narrative_provider ? <span className="verdict action">{record.narrative_provider}</span> : null}</div><p>{record.narrative ?? record.evidence_chain[record.evidence_chain.length - 1]}</p></article>;
 }
 
 function DecisionCard({ decision }: { decision: Decision }) {
@@ -350,6 +358,7 @@ function DecisionCard({ decision }: { decision: Decision }) {
       </div>
       <div className="decision-main">
         <strong>{decision.evidence.kpi}</strong>
+        <span>{decision.class}</span>
         <span>{decision.evidence.ratio.toFixed(1)}x expected</span>
         <span>{Math.round(decision.confidence * 100)}% confidence</span>
       </div>

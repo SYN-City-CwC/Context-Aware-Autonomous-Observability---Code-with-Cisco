@@ -5,7 +5,9 @@ import os
 
 from app.actions import maybe_act
 from app.detector import run_detector
+from app.deep import deep_decisions, silence_decisions
 from app.envelope import run_envelope_detector
+from app.train import DEFAULT_MODEL_DIR
 from app.generator import generate_ticks
 from app.models import ActionRecord, Decision, DetectorTick, Scenario, Tick, Timeline
 from app.rca import build_rca_records
@@ -22,6 +24,10 @@ def build_timeline(scenario: Scenario, seed: int | None = None) -> Timeline:
         actual.ghost_kpis = ghost.kpis
     ticks, decisions = _run_detector(scenario, ticks, detector_mode)
     _set_mttr(scenario, ticks, actions)
+    decisions = sorted(
+        [*decisions, *deep_decisions(scenario, ticks, DEFAULT_MODEL_DIR), *silence_decisions(scenario, ticks)],
+        key=lambda item: item.ts,
+    )
     return Timeline(
         scenario=scenario.name,
         ticks=ticks,

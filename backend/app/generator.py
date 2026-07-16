@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 
 import numpy as np
 
-from app.models import AttackSpec, EventSpec, Scenario, Tick
+from app.models import AttackSpec, EventSpec, MemoryLeakFault, Scenario, TelemetrySilenceFault, Tick
 from app.scenario import all_context_events, resolve_prior_events
 
 
@@ -15,7 +15,7 @@ def generate_ticks(
     events = scenario.events
     event_magnitudes = _draw_event_magnitudes(events, rng)
     goal_magnitudes = _draw_goal_magnitudes(events, rng)
-    injected = [*scenario.attacks, *scenario.faults]
+    injected = [*scenario.attacks, *[fault for fault in scenario.faults if isinstance(fault, AttackSpec)]]
     attack_magnitudes = _draw_attack_magnitudes(injected, rng)
     return _generate_window(
         scenario=scenario,
@@ -28,6 +28,7 @@ def generate_ticks(
         goal_magnitudes=goal_magnitudes,
         attack_magnitudes=attack_magnitudes,
         action_start_ts=action_start_ts,
+        faults=scenario.faults,
     )
 
 
@@ -39,7 +40,7 @@ def generate_history(scenario: Scenario, seed: int | None = None) -> list[Tick]:
     all_events = [*prior_events, *scenario.events]
     event_magnitudes = _draw_event_magnitudes(all_events, rng)
     goal_magnitudes = _draw_goal_magnitudes(all_events, rng)
-    injected = [*scenario.attacks, *scenario.faults]
+    injected = [*scenario.attacks, *[fault for fault in scenario.faults if isinstance(fault, AttackSpec)]]
     attack_magnitudes = _draw_attack_magnitudes(injected, rng)
 
     ticks: list[Tick] = []
@@ -63,6 +64,7 @@ def generate_history(scenario: Scenario, seed: int | None = None) -> list[Tick]:
                 goal_magnitudes=goal_magnitudes,
                 attack_magnitudes=attack_magnitudes,
                 action_start_ts=None,
+                faults=[] if day_offset != 0 else scenario.faults,
             )
         )
     return ticks
@@ -83,6 +85,7 @@ def _generate_window(
     goal_magnitudes: dict[tuple[str, datetime], tuple[float, float]],
     attack_magnitudes: dict[str, float],
     action_start_ts: datetime | None = None,
+    faults: list[object] | None = None,
 ) -> list[Tick]:
     ticks: list[Tick] = []
     current = start
@@ -93,10 +96,12 @@ def _generate_window(
             for attack in attacks
             if _is_active(current, attack.start, attack.end)
         ]
+        truth.extend(f"fault:{fault.id}" for fault in faults or [] if _is_active(current, fault.start, fault.end))
         kpis = _baseline_values(scenario, current, rng)
         _apply_events(kpis, scenario, events, current, event_magnitudes, goal_magnitudes)
         _apply_load_reactions(kpis, scenario)
         _apply_attacks(kpis, attacks, current, attack_magnitudes, action_start_ts)
+        _apply_faults(kpis, faults or [], current)
         ticks.append(
             Tick(
                 ts=current,
@@ -250,6 +255,12 @@ def _apply_load_reactions(kpis: dict[str, float], scenario: Scenario) -> None:
         kpis["p99_latency_ms"] *= 1.0 + min(0.14, 0.0045 * excess)
     if "error_rate_5xx" in kpis:
         kpis["error_rate_5xx"] += min(0.001, 0.00002 * excess)
+    edge_ratio = kpis.get("edge_rps", baselines.get("edge_rps", 1.0)) / max(baselines.get("edge_rps", 1.0), 1.0)
+    for kpi_id, scale in (("syslog_rate", 0.03), ("tcp_half_open", 0.015), ("agent_queue_depth", 0.03)):
+        if kpi_id in kpis:
+            kpis[kpi_id] *= 1.0 + min(0.15, scale * max(edge_ratio - 1.0, 0.0))
+    if "memory_used_mb" in kpis:
+        kpis["memory_used_mb"] *= 1.0 + min(0.025, 0.004 * excess)
 
 
 def _apply_attacks(
@@ -268,6 +279,16 @@ def _apply_attacks(
         kpis[attack.target_kpi] *= multiplier
         for impact in attack.additive_impacts:
             kpis[impact.kpi] += impact.value
+
+
+def _apply_faults(kpis: dict[str, float], faults: list[object], ts: datetime) -> None:
+    for fault in faults:
+        if not _is_active(ts, fault.start, fault.end):
+            continue
+        if isinstance(fault, MemoryLeakFault):
+            kpis[fault.kpi] += fault.slope_mb_per_min * ((ts - fault.start).total_seconds() / 60.0)
+        elif isinstance(fault, TelemetrySilenceFault):
+            kpis[fault.kpi] = 0.0
 
 
 def _is_active(ts: datetime, start: datetime, end: datetime) -> bool:

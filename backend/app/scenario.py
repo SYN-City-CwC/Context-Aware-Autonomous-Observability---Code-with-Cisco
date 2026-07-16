@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from app.models import EventSpec, PriorEventSpec, Scenario
+from app.models import AttackSpec, EventSpec, PriorEventSpec, Scenario
 
 
 DEFAULT_SCENARIO_PATH = Path(__file__).resolve().parents[1] / "scenarios" / "the-final.json"
@@ -114,13 +114,24 @@ def _validate_scenario_references(scenario: Scenario) -> None:
         for event in scenario.history.prior_events:
             _validate_prior_event_spec(event, kpi_ids)
     for attack in scenario.attacks:
-        if attack.end <= attack.start:
-            raise ValueError(f"attack {attack.id} must end after it starts")
-        if attack.target_kpi not in kpi_ids:
-            raise ValueError(f"attack {attack.id} references unknown KPI {attack.target_kpi}")
-        for impact in attack.additive_impacts:
-            if impact.kpi not in kpi_ids:
-                raise ValueError(f"attack {attack.id} references unknown KPI {impact.kpi}")
+        _validate_attack(attack, kpi_ids)
+    for fault in scenario.faults:
+        if fault.end <= fault.start:
+            raise ValueError(f"fault {fault.id} has invalid time range")
+        if isinstance(fault, AttackSpec):
+            _validate_attack(fault, kpi_ids)
+        elif fault.kpi not in kpi_ids:
+            raise ValueError(f"fault {fault.id} references unknown KPI {fault.kpi}")
+
+
+def _validate_attack(attack: AttackSpec, kpi_ids: set[str]) -> None:
+    if attack.end <= attack.start:
+        raise ValueError(f"attack {attack.id} must end after it starts")
+    if attack.target_kpi not in kpi_ids:
+        raise ValueError(f"attack {attack.id} references unknown KPI {attack.target_kpi}")
+    for impact in attack.additive_impacts:
+        if impact.kpi not in kpi_ids:
+            raise ValueError(f"attack {attack.id} references unknown KPI {impact.kpi}")
 
 
 def _validate_event_spec(event: EventSpec, kpi_ids: set[str]) -> None:

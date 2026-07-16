@@ -12,6 +12,7 @@ class KpiSpec(BaseModel):
     unit: str
     baseline: float
     diurnal: float = 0.0
+    layer: Literal["core", "deep"] = "core"
 
 
 class ExpectedImpact(BaseModel):
@@ -81,6 +82,26 @@ class AttackSpec(BaseModel):
     additive_impacts: list[AdditiveImpact] = Field(default_factory=list)
 
 
+class MemoryLeakFault(BaseModel):
+    kind: Literal["memory_leak"]
+    id: str
+    kpi: str
+    start: datetime
+    end: datetime
+    slope_mb_per_min: float
+
+
+class TelemetrySilenceFault(BaseModel):
+    kind: Literal["telemetry_silence"]
+    id: str
+    kpi: str
+    start: datetime
+    end: datetime
+
+
+FaultSpec = AttackSpec | MemoryLeakFault | TelemetrySilenceFault
+
+
 class Scenario(BaseModel):
     name: str
     seed: int
@@ -91,7 +112,7 @@ class Scenario(BaseModel):
     events: list[EventSpec]
     history: HistorySpec | None = None
     attacks: list[AttackSpec] = Field(default_factory=list)
-    faults: list[AttackSpec] = Field(default_factory=list)
+    faults: list[FaultSpec] = Field(default_factory=list)
 
     @property
     def baselines(self) -> dict[str, float]:
@@ -143,7 +164,8 @@ class Decision(BaseModel):
     ts: datetime
     verdict: Literal["SUPPRESS", "ALERT"]
     decision_class: Literal[
-        "expected-event-traffic", "unexplained-deviation", "unexplained-drop"
+        "expected-event-traffic", "unexplained-deviation", "unexplained-drop",
+        "structural-anomaly", "memory-leak", "telemetry-silence", "volumetric-attack"
     ] = Field(alias="class")
     reason: str
     confidence: float
@@ -168,6 +190,8 @@ class RcaRecord(BaseModel):
     confidence: float
     actions_taken: list[str]
     mttr_seconds: int | None = None
+    narrative: str | None = None
+    narrative_provider: Literal["groq", "gemini", "rules"] | None = None
 
 
 class Timeline(BaseModel):

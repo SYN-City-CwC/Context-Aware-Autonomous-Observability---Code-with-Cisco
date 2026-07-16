@@ -6,3 +6,6 @@ pytest
 httpx
 lightgbm
 pandas
+torch
+scikit-learn
+python-dotenv

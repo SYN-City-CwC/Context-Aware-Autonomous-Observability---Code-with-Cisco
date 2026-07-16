@@ -7,7 +7,9 @@ def build_rca_records(decisions: list[Decision], actions: list[ActionRecord]) ->
     records: list[RcaRecord] = []
     for decision in decisions:
         kpi = decision.evidence.kpi
-        if decision.verdict == "SUPPRESS":
+        if kpi in {"tcp_half_open", "copp_drops"}:
+            records.append(RcaRecord(incident_id="syn-flood-SYN-01", symptom_storm=["tcp_half_open", "copp_drops"], root_cause_class="volumetric-attack", evidence_chain=[decision.reason], confidence=decision.confidence, actions_taken=[]))
+        elif decision.verdict == "SUPPRESS":
             records.append(
                 RcaRecord(
                     incident_id=f"expected-{kpi}-{decision.ts.strftime('%H%M%S')}",
@@ -47,4 +49,18 @@ def build_rca_records(decisions: list[Decision], actions: list[ActionRecord]) ->
                     actions_taken=[],
                 )
             )
-    return records
+        elif decision.decision_class == "volumetric-attack":
+            records.append(RcaRecord(incident_id="syn-flood-SYN-01", symptom_storm=["tcp_half_open", "copp_drops"], root_cause_class="volumetric-attack", evidence_chain=[decision.reason], confidence=decision.confidence, actions_taken=[]))
+        elif decision.decision_class == "memory-leak":
+            records.append(RcaRecord(incident_id="memory-leak-LEAK-01", symptom_storm=["memory_used_mb"], root_cause_class="internal-fault", evidence_chain=[decision.reason, "Memory growth is independent of traffic volume."], confidence=decision.confidence, actions_taken=[]))
+        elif decision.decision_class == "telemetry-silence":
+            records.append(RcaRecord(incident_id="telemetry-silence-SIL-01", symptom_storm=["bgp_update_rate"], root_cause_class="operational-fault", evidence_chain=[decision.reason], confidence=decision.confidence, actions_taken=[]))
+    deduped: dict[str, RcaRecord] = {}
+    for record in records:
+        existing = deduped.get(record.incident_id)
+        if existing is None:
+            deduped[record.incident_id] = record
+        else:
+            existing.evidence_chain.extend(item for item in record.evidence_chain if item not in existing.evidence_chain)
+            existing.confidence = max(existing.confidence, record.confidence)
+    return list(deduped.values())

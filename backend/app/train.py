@@ -8,6 +8,7 @@ from typing import Any
 import lightgbm as lgb
 
 from app.features import CONTEXT_FEATURES, build_feature_frame
+from app.deep import train_deep_model
 from app.generator import generate_history
 from app.models import Scenario
 from app.scenario import load_scenario
@@ -96,6 +97,17 @@ def train_models(
         meta["validation_coverage"][kpi.id] = round(coverage, 4)
         if verbose:
             print(f"{kpi.id}: validation coverage {coverage:.3f}")
+
+    meta["tier2"] = train_deep_model(
+        scenario_model, ticks, train_indices, validation_indices, output_dir
+    )
+    if verbose:
+        report = meta["tier2"]
+        print(
+            f"Tier-2 {report['model']}: POT threshold {report['threshold']:.4f}; "
+            f"validation p98={report['validation_score']['p98']:.4f}, "
+            f"p99.5={report['validation_score']['p995']:.4f}"
+        )
 
     with (output_dir / "meta.json").open("w", encoding="utf-8") as handle:
         json.dump(meta, handle, indent=2)

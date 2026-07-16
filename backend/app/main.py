@@ -10,6 +10,7 @@ from app.models import EventSpec, Scenario, Timeline
 from app.replay import ReplaySession
 from app.scenario import load_scenario
 from app.timeline import build_timeline, public_tick
+from app.reasoning import narrate_records
 
 
 SCENARIO = load_scenario()
@@ -53,8 +54,9 @@ def timeline(truth: int = 0) -> dict[str, Any]:
 
 
 @app.get("/api/rca")
-def rca() -> list[dict[str, Any]]:
-    return [record.model_dump(mode="json") for record in TIMELINE.rca_records]
+def rca(narrate: int = 0) -> list[dict[str, Any]]:
+    records = narrate_records(TIMELINE.rca_records) if narrate == 1 else TIMELINE.rca_records
+    return [record.model_dump(mode="json") for record in records]
 
 
 @app.websocket("/ws/replay")

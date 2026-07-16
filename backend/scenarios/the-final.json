@@ -46,6 +46,24 @@
       "unit": "ratio",
       "baseline": 0.004,
       "diurnal": 0.0
+    },
+    {
+      "id": "bgp_update_rate", "display_name": "BGP updates", "unit": "u/min", "baseline": 80, "layer": "deep"
+    },
+    {
+      "id": "copp_drops", "display_name": "CoPP drops", "unit": "drops/min", "baseline": 2, "layer": "deep"
+    },
+    {
+      "id": "tcp_half_open", "display_name": "TCP half-open", "unit": "count", "baseline": 400, "layer": "deep"
+    },
+    {
+      "id": "syslog_rate", "display_name": "Syslog rate", "unit": "msgs/min", "baseline": 1200, "diurnal": 0.08, "layer": "deep"
+    },
+    {
+      "id": "memory_used_mb", "display_name": "Memory used", "unit": "MB", "baseline": 9000, "layer": "deep"
+    },
+    {
+      "id": "agent_queue_depth", "display_name": "Agent queue", "unit": "msgs", "baseline": 50, "diurnal": 0.1, "layer": "deep"
     }
   ],
   "events": [
@@ -393,6 +411,18 @@
           "value": 40.0
         }
       ]
+    },
+    {
+      "kind": "syn_flood",
+      "id": "SYN-01",
+      "start": "2026-07-16T19:40:00Z",
+      "end": "2026-07-16T19:48:00Z",
+      "target_kpi": "tcp_half_open",
+      "multiplier": { "low": 6.0, "high": 8.0 },
+      "additive_impacts": [
+        { "kpi": "copp_drops", "value": 300.0 },
+        { "kpi": "error_rate_5xx", "value": 0.006 }
+      ]
     }
   ],
   "faults": [
@@ -404,6 +434,14 @@
       "target_kpi": "p99_latency_ms",
       "multiplier": { "low": 10.0, "high": 12.0 },
       "additive_impacts": [{ "kpi": "error_rate_5xx", "value": 0.08 }]
+    },
+    {
+      "kind": "memory_leak", "id": "LEAK-01", "kpi": "memory_used_mb",
+      "start": "2026-07-16T20:10:00Z", "end": "2026-07-16T21:30:00Z", "slope_mb_per_min": 22.0
+    },
+    {
+      "kind": "telemetry_silence", "id": "SIL-01", "kpi": "bgp_update_rate",
+      "start": "2026-07-16T21:50:00Z", "end": "2026-07-16T21:56:00Z"
     }
   ]
 }
