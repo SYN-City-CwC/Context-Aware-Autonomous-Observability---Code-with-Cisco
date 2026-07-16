@@ -1,0 +1,138 @@
+{
+  "name": "the-final",
+  "seed": 42,
+  "sim_start": "2026-07-16T19:00:00Z",
+  "sim_end": "2026-07-16T22:00:00Z",
+  "tick_seconds": 10,
+  "kpis": [
+    {
+      "id": "streaming_concurrents",
+      "display_name": "Streaming concurrents",
+      "unit": "viewers",
+      "baseline": 2000000
+    },
+    {
+      "id": "edge_rps",
+      "display_name": "Edge requests",
+      "unit": "rps",
+      "baseline": 120000
+    },
+    {
+      "id": "checkout_rps",
+      "display_name": "Checkout requests",
+      "unit": "rps",
+      "baseline": 900
+    },
+    {
+      "id": "auth_login_rps",
+      "display_name": "Auth login requests",
+      "unit": "rps",
+      "baseline": 1500
+    },
+    {
+      "id": "p99_latency_ms",
+      "display_name": "p99 latency",
+      "unit": "ms",
+      "baseline": 180
+    },
+    {
+      "id": "error_rate_5xx",
+      "display_name": "5xx error rate",
+      "unit": "ratio",
+      "baseline": 0.004
+    }
+  ],
+  "events": [
+    {
+      "kind": "match",
+      "id": "FINAL-2026",
+      "start": "2026-07-16T19:15:00Z",
+      "end": "2026-07-16T21:30:00Z",
+      "kickoff": "2026-07-16T20:00:00Z",
+      "full_time": "2026-07-16T21:30:00Z",
+      "pre_ramp_start": "2026-07-16T19:15:00Z",
+      "goals": [
+        "2026-07-16T20:23:00Z",
+        "2026-07-16T21:12:00Z"
+      ],
+      "expected_impacts": [
+        {
+          "kpi": "streaming_concurrents",
+          "mode": "multiplier",
+          "low": 28.0,
+          "high": 32.0
+        },
+        {
+          "kpi": "edge_rps",
+          "mode": "multiplier",
+          "low": 3.0,
+          "high": 5.0
+        }
+      ]
+    },
+    {
+      "kind": "campaign",
+      "id": "M-217",
+      "start": "2026-07-16T21:15:00Z",
+      "end": "2026-07-16T21:27:00Z",
+      "expected_impacts": [
+        {
+          "kpi": "checkout_rps",
+          "mode": "multiplier",
+          "low": 3.5,
+          "high": 4.5
+        },
+        {
+          "kpi": "edge_rps",
+          "mode": "multiplier",
+          "low": 1.1,
+          "high": 1.2
+        }
+      ]
+    },
+    {
+      "kind": "campaign",
+      "id": "PUSH-FT",
+      "start": "2026-07-16T21:35:00Z",
+      "end": "2026-07-16T21:45:00Z",
+      "expected_impacts": [
+        {
+          "kpi": "edge_rps",
+          "mode": "multiplier",
+          "low": 1.5,
+          "high": 2.0
+        },
+        {
+          "kpi": "checkout_rps",
+          "mode": "multiplier",
+          "low": 1.5,
+          "high": 2.5
+        }
+      ]
+    }
+  ],
+  "attacks": [
+    {
+      "kind": "credential_stuffing",
+      "id": "CS-01",
+      "start": "2026-07-16T21:15:00Z",
+      "end": "2026-07-16T21:27:00Z",
+      "target_kpi": "auth_login_rps",
+      "multiplier": {
+        "low": 7.0,
+        "high": 9.0
+      },
+      "additive_impacts": [
+        {
+          "kpi": "error_rate_5xx",
+          "value": 0.02
+        },
+        {
+          "kpi": "p99_latency_ms",
+          "value": 40.0
+        }
+      ]
+    }
+  ],
+  "faults": []
+}
