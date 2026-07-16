@@ -6,8 +6,6 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from pydantic import ValidationError
-
 from app.models import Scenario
 
 
@@ -34,10 +32,7 @@ def load_scenario(path: str | Path | None = None) -> Scenario:
     with scenario_path.open("r", encoding="utf-8") as handle:
         payload = json.load(handle)
     _validate_iso_utc_timestamps(payload)
-    try:
-        scenario = Scenario.model_validate(payload)
-    except ValidationError:
-        raise
+    scenario = Scenario.model_validate(payload)
     _validate_scenario_references(scenario)
     return _normalize_datetimes(scenario)
 
