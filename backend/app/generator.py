@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 
 import numpy as np
 
-from app.models import AttackSpec, EventSpec, MemoryLeakFault, Scenario, TelemetrySilenceFault, Tick
+from app.models import AttackSpec, EventSpec, MemoryLeakFault, RetryStormFault, Scenario, TelemetrySilenceFault, Tick
 from app.scenario import all_context_events, resolve_prior_events
 
 
@@ -101,6 +101,7 @@ def _generate_window(
         _apply_events(kpis, scenario, events, current, event_magnitudes, goal_magnitudes)
         _apply_load_reactions(kpis, scenario)
         _apply_attacks(kpis, attacks, current, attack_magnitudes, action_start_ts)
+        _apply_population_stats(kpis, scenario, attacks, current, attack_magnitudes)
         _apply_faults(kpis, faults or [], current)
         ticks.append(
             Tick(
@@ -289,6 +290,25 @@ def _apply_faults(kpis: dict[str, float], faults: list[object], ts: datetime) ->
             kpis[fault.kpi] += fault.slope_mb_per_min * ((ts - fault.start).total_seconds() / 60.0)
         elif isinstance(fault, TelemetrySilenceFault):
             kpis[fault.kpi] = 0.0
+        elif isinstance(fault, RetryStormFault):
+            progress = min(1.0, (ts - fault.start).total_seconds() / 60.0)
+            kpis["retry_amplification"] = 1.0 + (fault.amplification - 1.0) * progress
+            kpis["p99_latency_ms"] += 2400.0 * progress
+            kpis["error_rate_5xx"] += 0.07 * progress
+
+
+def _apply_population_stats(kpis: dict[str, float], scenario: Scenario, attacks: list[AttackSpec], ts: datetime, magnitudes: dict[str, float]) -> None:
+    attack = next((item for item in attacks if item.population_profile and _is_active(ts, item.start, item.end)), None)
+    if attack is None:
+        return
+    legit = scenario.baselines["auth_login_rps"]
+    bot = legit * (magnitudes[attack.id] - 1.0)
+    share = bot / (legit + bot)
+    mapping = {"source_entropy": "login_source_entropy", "flow_correlation": "login_flow_correlation", "iat_cv": "login_iat_cv", "failure_ratio": "auth_failure_ratio"}
+    for key, channel in mapping.items():
+        kpis[channel] = scenario.baselines[channel] * (1.0 - share) + attack.population_profile[key] * share
+    kpis["watch_time_index"] = scenario.baselines["watch_time_index"]
+    kpis["conversion_coherence"] = scenario.baselines["conversion_coherence"]
 
 
 def _is_active(ts: datetime, start: datetime, end: datetime) -> bool:

@@ -7,7 +7,12 @@ def build_rca_records(decisions: list[Decision], actions: list[ActionRecord]) ->
     records: list[RcaRecord] = []
     for decision in decisions:
         kpi = decision.evidence.kpi
-        if kpi in {"tcp_half_open", "copp_drops"}:
+        if decision.decision_class == "retry-storm":
+            records.append(RcaRecord(incident_id="checkout-retry-storm", symptom_storm=["retry_amplification", "p99_latency_ms", "error_rate_5xx"], root_cause_class="retry-storm", evidence_chain=[decision.reason, _retry_fix(decision, decisions)], confidence=decision.confidence, actions_taken=[]))
+        elif decision.decision_class == "credential-stuffing":
+            action = next((item for item in actions if item.trigger_decision_ts == decision.ts), None)
+            records.append(RcaRecord(incident_id="credential-stuffing-CS-01", symptom_storm=["auth_login_rps", "auth_failure_ratio"], root_cause_class="credential-stuffing", evidence_chain=[decision.reason], confidence=decision.confidence, actions_taken=[action.id] if action else [], mttr_seconds=action.mttr_seconds if action else None))
+        elif kpi in {"tcp_half_open", "copp_drops"}:
             records.append(RcaRecord(incident_id="syn-flood-SYN-01", symptom_storm=["tcp_half_open", "copp_drops"], root_cause_class="volumetric-attack", evidence_chain=[decision.reason], confidence=decision.confidence, actions_taken=[]))
         elif decision.verdict == "SUPPRESS":
             records.append(
@@ -64,3 +69,7 @@ def build_rca_records(decisions: list[Decision], actions: list[ActionRecord]) ->
             existing.evidence_chain.extend(item for item in record.evidence_chain if item not in existing.evidence_chain)
             existing.confidence = max(existing.confidence, record.confidence)
     return list(deduped.values())
+
+
+def _retry_fix(decision: Decision, decisions: list[Decision]) -> str:
+    return "Proposed fix: revert checkout-svc v2.31 retry.go:42 timeout_ms 200->2000; cap retries, add exponential backoff and a circuit breaker."

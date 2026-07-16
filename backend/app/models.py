@@ -12,7 +12,7 @@ class KpiSpec(BaseModel):
     unit: str
     baseline: float
     diurnal: float = 0.0
-    layer: Literal["core", "deep"] = "core"
+    layer: Literal["core", "deep", "population"] = "core"
 
 
 class ExpectedImpact(BaseModel):
@@ -80,6 +80,7 @@ class AttackSpec(BaseModel):
     target_kpi: str
     multiplier: AttackMultiplier
     additive_impacts: list[AdditiveImpact] = Field(default_factory=list)
+    population_profile: dict[str, float] = Field(default_factory=dict)
 
 
 class MemoryLeakFault(BaseModel):
@@ -102,6 +103,31 @@ class TelemetrySilenceFault(BaseModel):
 FaultSpec = AttackSpec | MemoryLeakFault | TelemetrySilenceFault
 
 
+class RetryStormFault(BaseModel):
+    kind: Literal["retry_storm"]
+    id: str
+    path: list[str]
+    start: datetime
+    end: datetime
+    amplification: float
+
+
+class DeploymentChange(BaseModel):
+    file: str
+    line: int
+    key: str
+    old: float
+    new: float
+
+
+class Deployment(BaseModel):
+    service: str
+    version: str
+    ts: datetime
+    change: DeploymentChange
+    note: str
+
+
 class Scenario(BaseModel):
     name: str
     seed: int
@@ -112,7 +138,8 @@ class Scenario(BaseModel):
     events: list[EventSpec]
     history: HistorySpec | None = None
     attacks: list[AttackSpec] = Field(default_factory=list)
-    faults: list[FaultSpec] = Field(default_factory=list)
+    faults: list[FaultSpec | RetryStormFault] = Field(default_factory=list)
+    deployments: list[Deployment] = Field(default_factory=list)
 
     @property
     def baselines(self) -> dict[str, float]:
@@ -165,11 +192,13 @@ class Decision(BaseModel):
     verdict: Literal["SUPPRESS", "ALERT"]
     decision_class: Literal[
         "expected-event-traffic", "unexplained-deviation", "unexplained-drop",
-        "structural-anomaly", "memory-leak", "telemetry-silence", "volumetric-attack"
+        "structural-anomaly", "memory-leak", "telemetry-silence", "volumetric-attack",
+        "credential-stuffing", "retry-storm"
     ] = Field(alias="class")
     reason: str
     confidence: float
     evidence: Evidence
+    leaf: Literal["attack", "fault"] | None = None
 
 
 class ActionRecord(BaseModel):

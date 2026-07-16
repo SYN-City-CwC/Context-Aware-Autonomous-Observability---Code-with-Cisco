@@ -219,7 +219,7 @@ export default function App() {
 
       <main className="dashboard">
         <section className="kpi-pane" aria-label="KPI strips">
-          {(scenario?.kpis ?? []).filter((kpi) => kpi.layer !== "deep").map((kpi) => (
+          {(scenario?.kpis ?? []).filter((kpi) => kpi.layer !== "deep" && kpi.layer !== "population").map((kpi) => (
             <KpiStrip
               key={kpi.id}
               kpi={kpi}
@@ -227,6 +227,10 @@ export default function App() {
               tickSeconds={scenario?.tick_seconds ?? 10}
               highlight={highlights[kpi.id]}
             />
+          ))}
+          <h2 className="deep-heading">Population telemetry</h2>
+          {(scenario?.kpis ?? []).filter((kpi) => kpi.layer === "population").map((kpi) => (
+            <KpiStrip key={kpi.id} kpi={kpi} ticks={ticks} tickSeconds={scenario?.tick_seconds ?? 10} highlight={highlights[kpi.id]} />
           ))}
           <h2 className="deep-heading">Deep telemetry</h2>
           {(scenario?.kpis ?? []).filter((kpi) => kpi.layer === "deep").map((kpi) => (
@@ -359,6 +363,7 @@ function DecisionCard({ decision }: { decision: Decision }) {
       <div className="decision-main">
         <strong>{decision.evidence.kpi}</strong>
         <span>{decision.class}</span>
+        {decision.leaf ? <span>{decision.leaf} leaf</span> : null}
         <span>{decision.evidence.ratio.toFixed(1)}x expected</span>
         <span>{Math.round(decision.confidence * 100)}% confidence</span>
       </div>

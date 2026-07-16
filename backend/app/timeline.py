@@ -11,12 +11,14 @@ from app.train import DEFAULT_MODEL_DIR
 from app.generator import generate_ticks
 from app.models import ActionRecord, Decision, DetectorTick, Scenario, Tick, Timeline
 from app.rca import build_rca_records
+from app.triage import route_decisions
 
 
 def build_timeline(scenario: Scenario, seed: int | None = None) -> Timeline:
     ghost_ticks = generate_ticks(scenario, seed=seed)
     detector_mode = os.environ.get("DETECTOR", "envelope").lower()
     _, first_pass = _run_detector(scenario, ghost_ticks, detector_mode)
+    first_pass = route_decisions(scenario, ghost_ticks, first_pass)
     actions = [action for decision in first_pass if (action := maybe_act(decision)) is not None]
     action_start = actions[0].ts if actions else None
     ticks = generate_ticks(scenario, seed=seed, action_start_ts=action_start)
@@ -28,6 +30,7 @@ def build_timeline(scenario: Scenario, seed: int | None = None) -> Timeline:
         [*decisions, *deep_decisions(scenario, ticks, DEFAULT_MODEL_DIR), *silence_decisions(scenario, ticks)],
         key=lambda item: item.ts,
     )
+    decisions = route_decisions(scenario, ticks, decisions)
     return Timeline(
         scenario=scenario.name,
         ticks=ticks,

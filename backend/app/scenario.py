@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from app.models import AttackSpec, EventSpec, PriorEventSpec, Scenario
+from app.models import AttackSpec, EventSpec, PriorEventSpec, RetryStormFault, Scenario
 
 
 DEFAULT_SCENARIO_PATH = Path(__file__).resolve().parents[1] / "scenarios" / "the-final.json"
@@ -120,6 +120,9 @@ def _validate_scenario_references(scenario: Scenario) -> None:
             raise ValueError(f"fault {fault.id} has invalid time range")
         if isinstance(fault, AttackSpec):
             _validate_attack(fault, kpi_ids)
+        elif isinstance(fault, RetryStormFault):
+            if fault.amplification <= 1.0:
+                raise ValueError(f"fault {fault.id} has invalid amplification")
         elif fault.kpi not in kpi_ids:
             raise ValueError(f"fault {fault.id} references unknown KPI {fault.kpi}")
 

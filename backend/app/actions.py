@@ -6,7 +6,7 @@ from app.models import ActionRecord, Decision
 def maybe_act(decision: Decision) -> ActionRecord | None:
     if (
         decision.verdict != "ALERT"
-        or decision.evidence.kpi != "auth_login_rps"
+        or decision.decision_class != "credential-stuffing"
         or decision.confidence < 0.8
     ):
         return None

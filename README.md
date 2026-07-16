@@ -6,7 +6,7 @@ SYN-City is a deterministic observability demo for match-night traffic: it learn
 
 Backend (from `backend`): activate `.venv`, run `python -m app.train` if `models/` is absent, then `uvicorn app.main:app --reload`. Frontend (from `frontend`): run `pnpm install` then `pnpm dev`.
 
-The replay shows a context-aware M-217 suppression, credential stuffing with an 80% simulated edge rate-limit, a SYN flood, traffic-independent memory leak, telemetry silence, and a checkout fault. Stage 4 ships a deterministic CPU torch LSTM autoencoder plus Isolation Forest/POT scoring and a liveness guard. RCA narratives use Groq -> Gemini -> rules when keys are present in `backend/.env`, and degrade gracefully to rules without them. Current detector mode is `DETECTOR=envelope` (set `DETECTOR=rules` for degraded mode).
+The replay shows a context-aware M-217 suppression, credential stuffing with an 80% simulated edge rate-limit, a SYN flood, traffic-independent memory leak, telemetry silence, and a checkout retry storm. Attack discrimination fuses source entropy, flow similarity, machine-regular timing, auth failures, and crowd coherence; fault discrimination fuses retry amplification, memory slope, and deploy correlation. Stage 4 ships a deterministic CPU torch LSTM autoencoder plus Isolation Forest/POT scoring and a liveness guard. RCA narratives use Groq -> Gemini -> rules when keys are present in `backend/.env`, and degrade gracefully to rules without them. Current detector mode is `DETECTOR=envelope` (set `DETECTOR=rules` for degraded mode).
 
 ```mermaid
 flowchart LR
@@ -21,4 +21,4 @@ flowchart LR
 
 ## Not yet built
 
-- Real git-diff localization: the checkout RCA is a scripted narrative demonstrating the required output format.
+- Full action machinery and automated regression tests.

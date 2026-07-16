@@ -64,7 +64,14 @@
     },
     {
       "id": "agent_queue_depth", "display_name": "Agent queue", "unit": "msgs", "baseline": 50, "diurnal": 0.1, "layer": "deep"
-    }
+    },
+    { "id": "login_source_entropy", "display_name": "Login source entropy", "unit": "ratio", "baseline": 0.92, "layer": "population" },
+    { "id": "login_flow_correlation", "display_name": "Login flow correlation", "unit": "ratio", "baseline": 0.12, "layer": "population" },
+    { "id": "login_iat_cv", "display_name": "Login IAT CV", "unit": "ratio", "baseline": 0.85, "layer": "population" },
+    { "id": "auth_failure_ratio", "display_name": "Auth failures", "unit": "ratio", "baseline": 0.06, "layer": "population" },
+    { "id": "watch_time_index", "display_name": "Watch-time", "unit": "index", "baseline": 1.0, "layer": "population" },
+    { "id": "conversion_coherence", "display_name": "Conversion coherence", "unit": "ratio", "baseline": 0.9, "layer": "population" },
+    { "id": "retry_amplification", "display_name": "Retry amplification", "unit": "ratio", "baseline": 1.0, "layer": "deep" }
   ],
   "events": [
     {
@@ -410,7 +417,8 @@
           "kpi": "p99_latency_ms",
           "value": 40.0
         }
-      ]
+      ],
+      "population_profile": { "source_entropy": 0.18, "flow_correlation": 0.95, "iat_cv": 0.06, "failure_ratio": 0.85 }
     },
     {
       "kind": "syn_flood",
@@ -427,13 +435,12 @@
   ],
   "faults": [
     {
-      "kind": "internal_fault",
+      "kind": "retry_storm",
       "id": "CHECKOUT-RETRY-01",
+      "path": ["gateway", "checkout-svc", "inventory"],
       "start": "2026-07-16T21:30:00Z",
-      "end": "2026-07-16T21:33:00Z",
-      "target_kpi": "p99_latency_ms",
-      "multiplier": { "low": 10.0, "high": 12.0 },
-      "additive_impacts": [{ "kpi": "error_rate_5xx", "value": 0.08 }]
+      "end": "2026-07-16T21:40:00Z",
+      "amplification": 3.4
     },
     {
       "kind": "memory_leak", "id": "LEAK-01", "kpi": "memory_used_mb",
@@ -443,5 +450,10 @@
       "kind": "telemetry_silence", "id": "SIL-01", "kpi": "bgp_update_rate",
       "start": "2026-07-16T21:50:00Z", "end": "2026-07-16T21:56:00Z"
     }
+  ],
+  "deployments": [
+    { "service": "catalog", "version": "v1.8", "ts": "2026-07-16T19:05:00Z", "change": { "file": "cache.go", "line": 18, "key": "ttl", "old": 60, "new": 90 }, "note": "cache tuning" },
+    { "service": "checkout-svc", "version": "v2.31", "ts": "2026-07-16T20:52:00Z", "change": { "file": "retry.go", "line": 42, "key": "timeout_ms", "old": 2000, "new": 200 }, "note": "reduce checkout timeout" },
+    { "service": "search", "version": "v4.2", "ts": "2026-07-16T20:10:00Z", "change": { "file": "rank.go", "line": 9, "key": "limit", "old": 20, "new": 30 }, "note": "ranking tweak" }
   ]
 }

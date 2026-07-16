@@ -5,7 +5,7 @@ export interface KpiSpec {
   display_name: string;
   unit: string;
   baseline: number;
-  layer?: "core" | "deep";
+  layer?: "core" | "deep" | "population";
 }
 
 export interface ExpectedImpact {
@@ -71,6 +71,7 @@ export interface Decision {
   class: "expected-event-traffic" | "unexplained-deviation" | "unexplained-drop" | "structural-anomaly" | "memory-leak" | "telemetry-silence" | "volumetric-attack";
   reason: string;
   confidence: number;
+  leaf?: "attack" | "fault" | null;
   evidence: {
     kpi: string;
     observed: number;
