@@ -264,6 +264,21 @@ h3 {
   border-left: 4px solid #ef4444;
 }
 
+.decision-card.action {
+  border-left: 4px solid #3b82f6;
+}
+
+.verdict.action {
+  color: #bfdbfe;
+  background: #172554;
+}
+
+.rca-list {
+  border-top: 1px solid #263241;
+  margin-top: 14px;
+  padding-top: 12px;
+}
+
 .decision-topline,
 .decision-main {
   display: flex;

@@ -8,22 +8,26 @@ from app.models import AttackSpec, EventSpec, Scenario, Tick
 from app.scenario import all_context_events, resolve_prior_events
 
 
-def generate_ticks(scenario: Scenario, seed: int | None = None) -> list[Tick]:
+def generate_ticks(
+    scenario: Scenario, seed: int | None = None, action_start_ts: datetime | None = None
+) -> list[Tick]:
     rng = np.random.default_rng(scenario.seed if seed is None else seed)
     events = scenario.events
     event_magnitudes = _draw_event_magnitudes(events, rng)
     goal_magnitudes = _draw_goal_magnitudes(events, rng)
-    attack_magnitudes = _draw_attack_magnitudes(scenario.attacks, rng)
+    injected = [*scenario.attacks, *scenario.faults]
+    attack_magnitudes = _draw_attack_magnitudes(injected, rng)
     return _generate_window(
         scenario=scenario,
         start=scenario.sim_start,
         end=scenario.sim_end,
         events=events,
-        attacks=scenario.attacks,
+        attacks=injected,
         rng=rng,
         event_magnitudes=event_magnitudes,
         goal_magnitudes=goal_magnitudes,
         attack_magnitudes=attack_magnitudes,
+        action_start_ts=action_start_ts,
     )
 
 
@@ -35,7 +39,8 @@ def generate_history(scenario: Scenario, seed: int | None = None) -> list[Tick]:
     all_events = [*prior_events, *scenario.events]
     event_magnitudes = _draw_event_magnitudes(all_events, rng)
     goal_magnitudes = _draw_goal_magnitudes(all_events, rng)
-    attack_magnitudes = _draw_attack_magnitudes(scenario.attacks, rng)
+    injected = [*scenario.attacks, *scenario.faults]
+    attack_magnitudes = _draw_attack_magnitudes(injected, rng)
 
     ticks: list[Tick] = []
     first_offset = -(scenario.history.days - 1)
@@ -45,7 +50,7 @@ def generate_history(scenario: Scenario, seed: int | None = None) -> list[Tick]:
         day_events = [
             event for event in all_events if start.date() <= event.start.date() <= end.date()
         ]
-        day_attacks = scenario.attacks if day_offset == 0 else []
+        day_attacks = injected if day_offset == 0 else []
         ticks.extend(
             _generate_window(
                 scenario=scenario,
@@ -57,6 +62,7 @@ def generate_history(scenario: Scenario, seed: int | None = None) -> list[Tick]:
                 event_magnitudes=event_magnitudes,
                 goal_magnitudes=goal_magnitudes,
                 attack_magnitudes=attack_magnitudes,
+                action_start_ts=None,
             )
         )
     return ticks
@@ -76,6 +82,7 @@ def _generate_window(
     event_magnitudes: dict[tuple[str, str], float],
     goal_magnitudes: dict[tuple[str, datetime], tuple[float, float]],
     attack_magnitudes: dict[str, float],
+    action_start_ts: datetime | None = None,
 ) -> list[Tick]:
     ticks: list[Tick] = []
     current = start
@@ -89,7 +96,7 @@ def _generate_window(
         kpis = _baseline_values(scenario, current, rng)
         _apply_events(kpis, scenario, events, current, event_magnitudes, goal_magnitudes)
         _apply_load_reactions(kpis, scenario)
-        _apply_attacks(kpis, attacks, current, attack_magnitudes)
+        _apply_attacks(kpis, attacks, current, attack_magnitudes, action_start_ts)
         ticks.append(
             Tick(
                 ts=current,
@@ -250,11 +257,15 @@ def _apply_attacks(
     attacks: list[AttackSpec],
     ts: datetime,
     attack_magnitudes: dict[str, float],
+    action_start_ts: datetime | None,
 ) -> None:
     for attack in attacks:
         if not _is_active(ts, attack.start, attack.end):
             continue
-        kpis[attack.target_kpi] *= attack_magnitudes[attack.id]
+        multiplier = attack_magnitudes[attack.id]
+        if attack.kind == "credential_stuffing" and action_start_ts is not None and ts >= action_start_ts:
+            multiplier = 1.0 + (multiplier - 1.0) * 0.2
+        kpis[attack.target_kpi] *= multiplier
         for impact in attack.additive_impacts:
             kpis[impact.kpi] += impact.value
 

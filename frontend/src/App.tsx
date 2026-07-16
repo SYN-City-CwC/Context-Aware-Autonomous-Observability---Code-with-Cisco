@@ -8,7 +8,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import type { Decision, KpiSpec, ReplayStatus, ScenarioSummary, Tick, Verdict } from "./types";
+import type { ActionRecord, Decision, KpiSpec, RcaRecord, ReplayStatus, ScenarioSummary, Tick, Verdict } from "./types";
 import { ReplaySocket, backendHttpUrl } from "./ws";
 
 const SPEEDS = [30, 60, 120, 300];
@@ -27,12 +27,15 @@ type ChartPoint = {
   value: number;
   p10: number | null;
   band: number | null;
+  ghost: number | null;
 };
 
 export default function App() {
   const [scenario, setScenario] = useState<ScenarioSummary | null>(null);
   const [ticks, setTicks] = useState<Tick[]>([]);
   const [decisions, setDecisions] = useState<Decision[]>([]);
+  const [actions, setActions] = useState<ActionRecord[]>([]);
+  const [rcaRecords, setRcaRecords] = useState<RcaRecord[]>([]);
   const [status, setStatus] = useState<ReplayStatus | null>(null);
   const [connection, setConnection] = useState<ConnectionState>("disconnected");
   const [speed, setSpeed] = useState(60);
@@ -73,6 +76,9 @@ export default function App() {
             setDecisions((current) => [...message.decisions, ...current]);
             flashDecisionKpis(message.decisions);
           }
+          if (message.actions.length > 0) {
+            setActions((current) => [...message.actions, ...current]);
+          }
         }
         if (message.type === "end") {
           setConnection("ended");
@@ -83,6 +89,13 @@ export default function App() {
     socketRef.current = socket;
     socket.connect();
     return () => socket.close();
+  }, []);
+
+  useEffect(() => {
+    fetch(`${backendHttpUrl()}/api/rca`)
+      .then((response) => response.json() as Promise<RcaRecord[]>)
+      .then(setRcaRecords)
+      .catch(() => setRcaRecords([]));
   }, []);
 
   const latestTick = ticks[ticks.length - 1] ?? null;
@@ -120,6 +133,7 @@ export default function App() {
       setHasStarted(true);
       setTicks([]);
       setDecisions([]);
+      setActions([]);
       setHighlights({});
       setConnection("connected");
       socketRef.current.send({ cmd: "start", speed });
@@ -136,6 +150,7 @@ export default function App() {
     setHasStarted(true);
     setTicks([]);
     setDecisions([]);
+    setActions([]);
     setHighlights({});
     if (!socketRef.current?.isOpen() || status?.ended) {
       pendingRestartRef.current = true;
@@ -150,6 +165,7 @@ export default function App() {
     setHasStarted(false);
     setTicks([]);
     setDecisions([]);
+    setActions([]);
     setHighlights({});
     setStatus(null);
     setConnection("disconnected");
@@ -165,7 +181,7 @@ export default function App() {
     <div className="app-shell">
       <header className="topbar">
         <div>
-          <p className="eyebrow">SYN-City Stage 1</p>
+          <p className="eyebrow">SYN-City Stage 3 sprint</p>
           <h1>{scenario?.name ?? "connecting"}</h1>
         </div>
         <div className="clock-block">
@@ -216,7 +232,7 @@ export default function App() {
               <p className="eyebrow">Decision feed</p>
               <h2>Suppression and alert log</h2>
             </div>
-            <span className="feed-counts">{suppressions} suppressions · {alerts} alerts</span>
+            <span className="feed-counts">{suppressions} suppressions / {alerts} alerts / {actions.length} actions</span>
           </div>
           <div className="decision-list">
             {decisions.length === 0 ? (
@@ -226,6 +242,11 @@ export default function App() {
                 <DecisionCard key={`${decision.ts}-${decision.evidence.kpi}-${index}`} decision={decision} />
               ))
             )}
+            {actions.map((action) => <ActionCard key={action.id} action={action} />)}
+            <section className="rca-list" aria-label="RCA reports">
+              <p className="eyebrow">RCA reports</p>
+              {rcaRecords.map((record) => <RcaCard key={record.incident_id} record={record} />)}
+            </section>
           </div>
         </section>
       </main>
@@ -257,6 +278,7 @@ function KpiStrip({
         band: tick.envelope?.[kpi.id]
           ? tick.envelope[kpi.id].p90 - tick.envelope[kpi.id].p10
           : null,
+        ghost: tick.ghost_kpis?.[kpi.id] ?? null,
       })),
     [kpi.id, ticks, windowSize],
   );
@@ -302,12 +324,21 @@ function KpiStrip({
               connectNulls
               isAnimationActive={false}
             />
+            <Line type="monotone" dataKey="ghost" stroke="#6b7280" strokeDasharray="4 4" dot={false} strokeWidth={1} isAnimationActive={false} />
             <Line type="monotone" dataKey="value" stroke="#89b4fa" dot={false} strokeWidth={2} isAnimationActive={false} />
           </ComposedChart>
         </ResponsiveContainer>
       </div>
     </article>
   );
+}
+
+function ActionCard({ action }: { action: ActionRecord }) {
+  return <article className="decision-card action"><div className="decision-topline"><time>{formatTime(action.ts)}</time><span className="verdict action">ACTION</span></div><div className="decision-main"><strong>{action.action}</strong><span>{action.target_kpi}</span><span>{action.mttr_seconds === null ? "verifying" : `${action.mttr_seconds}s MTTR`}</span></div><p>Approved edge rate limit reduced the credential-stuffing overlay by 80%.</p></article>;
+}
+
+function RcaCard({ record }: { record: RcaRecord }) {
+  return <article className="decision-card rca"><div className="decision-main"><strong>{record.root_cause_class}</strong><span>{Math.round(record.confidence * 100)}% confidence</span></div><p>{record.evidence_chain[record.evidence_chain.length - 1]}</p></article>;
 }
 
 function DecisionCard({ decision }: { decision: Decision }) {

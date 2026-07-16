@@ -91,7 +91,7 @@ class Scenario(BaseModel):
     events: list[EventSpec]
     history: HistorySpec | None = None
     attacks: list[AttackSpec] = Field(default_factory=list)
-    faults: list[dict] = Field(default_factory=list)
+    faults: list[AttackSpec] = Field(default_factory=list)
 
     @property
     def baselines(self) -> dict[str, float]:
@@ -104,6 +104,7 @@ class Tick(BaseModel):
     active_events: list[str]
     truth: list[str] = Field(default_factory=list)
     envelope: dict[str, "EnvelopeBand"] | None = None
+    ghost_kpis: dict[str, float] | None = None
 
 
 class DetectorTick(BaseModel):
@@ -149,7 +150,29 @@ class Decision(BaseModel):
     evidence: Evidence
 
 
+class ActionRecord(BaseModel):
+    id: str
+    ts: datetime
+    action: Literal["edge_rate_limit"]
+    target_kpi: str
+    trigger_decision_ts: datetime
+    approved: bool
+    mttr_seconds: int | None = None
+
+
+class RcaRecord(BaseModel):
+    incident_id: str
+    symptom_storm: list[str]
+    root_cause_class: str
+    evidence_chain: list[str]
+    confidence: float
+    actions_taken: list[str]
+    mttr_seconds: int | None = None
+
+
 class Timeline(BaseModel):
     scenario: str
     ticks: list[Tick]
     decisions: list[Decision]
+    actions: list[ActionRecord] = Field(default_factory=list)
+    rca_records: list[RcaRecord] = Field(default_factory=list)

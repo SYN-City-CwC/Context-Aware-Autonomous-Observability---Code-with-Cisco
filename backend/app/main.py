@@ -48,7 +48,13 @@ def timeline(truth: int = 0) -> dict[str, Any]:
             decision.model_dump(mode="json", by_alias=True)
             for decision in TIMELINE.decisions
         ],
+        "actions": [action.model_dump(mode="json") for action in TIMELINE.actions],
     }
+
+
+@app.get("/api/rca")
+def rca() -> list[dict[str, Any]]:
+    return [record.model_dump(mode="json") for record in TIMELINE.rca_records]
 
 
 @app.websocket("/ws/replay")

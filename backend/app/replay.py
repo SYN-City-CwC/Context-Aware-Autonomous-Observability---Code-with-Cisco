@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import Any
 
-from app.models import Decision, Timeline
+from app.models import ActionRecord, Decision, Timeline
 from app.timeline import public_tick
 
 
@@ -18,6 +18,7 @@ class ReplaySession:
         self.running = False
         self.ended = False
         self._decisions = _decisions_by_tick(timeline.decisions)
+        self._actions = _actions_by_tick(timeline.actions)
 
     def handle_command(self, command: dict[str, Any]) -> dict[str, Any]:
         cmd = command.get("cmd")
@@ -62,6 +63,7 @@ class ReplaySession:
                 decision.model_dump(mode="json", by_alias=True)
                 for decision in self._decisions.get(tick.ts.isoformat(), [])
             ],
+            "actions": [action.model_dump(mode="json") for action in self._actions.get(tick.ts.isoformat(), [])],
         }
 
     def delay_seconds(self, tick_seconds: int) -> float:
@@ -74,4 +76,11 @@ def _decisions_by_tick(decisions: list[Decision]) -> dict[str, list[Decision]]:
     grouped: dict[str, list[Decision]] = defaultdict(list)
     for decision in decisions:
         grouped[decision.ts.isoformat()].append(decision)
+    return dict(grouped)
+
+
+def _actions_by_tick(actions: list[ActionRecord]) -> dict[str, list[ActionRecord]]:
+    grouped: dict[str, list[ActionRecord]] = defaultdict(list)
+    for action in actions:
+        grouped[action.ts.isoformat()].append(action)
     return dict(grouped)

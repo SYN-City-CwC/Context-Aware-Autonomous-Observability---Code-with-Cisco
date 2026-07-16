@@ -39,6 +39,27 @@ export interface Tick {
   kpis: Record<string, number>;
   active_events: string[];
   envelope?: Record<string, { p10: number; p90: number }>;
+  ghost_kpis?: Record<string, number>;
+}
+
+export interface ActionRecord {
+  id: string;
+  ts: string;
+  action: "edge_rate_limit";
+  target_kpi: string;
+  trigger_decision_ts: string;
+  approved: boolean;
+  mttr_seconds: number | null;
+}
+
+export interface RcaRecord {
+  incident_id: string;
+  symptom_storm: string[];
+  root_cause_class: string;
+  evidence_chain: string[];
+  confidence: number;
+  actions_taken: string[];
+  mttr_seconds: number | null;
 }
 
 export interface Decision {
@@ -76,5 +97,5 @@ export type ReplayStatus = {
 export type ReplayMessage =
   | { type: "hello"; scenario: ScenarioSummary }
   | ReplayStatus
-  | { type: "tick"; tick: Tick; decisions: Decision[] }
+  | { type: "tick"; tick: Tick; decisions: Decision[]; actions: ActionRecord[] }
   | { type: "end" };
