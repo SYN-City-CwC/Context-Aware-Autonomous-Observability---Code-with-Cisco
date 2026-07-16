@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from datetime import timedelta
 import hashlib
 import json
 import os
 from pathlib import Path
 from time import perf_counter
 
-from app.actions import action_for, maybe_act
+from app.actions import action_for
 from app.detector import run_detector
 from app.deep import deep_decisions, silence_decisions
 from app.envelope import run_envelope_detector
@@ -18,7 +19,7 @@ from app.rca import build_rca_records
 from app.triage import route_decisions
 
 
-CACHE_VERSION = "3"
+CACHE_VERSION = "4"
 CACHE_DIR = Path(__file__).resolve().parents[1] / "cache"
 
 
@@ -41,33 +42,17 @@ def _build_timeline(scenario: Scenario, seed: int | None = None) -> Timeline:
     detector_mode = os.environ.get("DETECTOR", "envelope").lower()
     _, first_pass = _run_detector(scenario, ghost_ticks, detector_mode)
     first_pass = route_decisions(scenario, ghost_ticks, first_pass)
-    actions = [action for decision in first_pass if (action := maybe_act(decision)) is not None]
-    action_start = actions[0].ts if actions else None
-    ticks = generate_ticks(scenario, seed=seed, action_start_ts=action_start)
+    actions, applied, audit = _plan_actions(scenario, first_pass, ghost_ticks)
+    ticks = generate_ticks(scenario, seed=seed, applied_actions=applied)
     for actual, ghost in zip(ticks, ghost_ticks):
         actual.ghost_kpis = ghost.kpis
     ticks, decisions = _run_detector(scenario, ticks, detector_mode)
-    _set_mttr(scenario, ticks, actions)
+    _finalize_probes(scenario, ticks, actions, audit)
     decisions = sorted(
         [*decisions, *deep_decisions(scenario, ticks, DEFAULT_MODEL_DIR), *silence_decisions(scenario, ticks)],
         key=lambda item: item.ts,
     )
     decisions = route_decisions(scenario, ticks, decisions)
-    audit: list[AuditEntry] = []
-    for decision in decisions:
-        if decision.decision_class == "volumetric-attack":
-            action, entry = action_for(decision, "observe"); actions.append(action); audit.append(entry)
-        elif decision.decision_class == "retry-storm":
-            for spec in ("circuit_break", "config_rollback"):
-                action, entry = action_for(decision, spec); actions.append(action); audit.append(entry)
-    for action in actions:
-        if action.approved:
-            for state in ("ROLLOUT_10", "ROLLOUT_100", "VERIFIED"):
-                action.transitions.append(ActionTransition(state=state, ts=action.ts)); action.state = state
-                audit.append(AuditEntry(ts=action.ts, kind="rollout" if "ROLLOUT" in state else "probe", detail=f"{state}: legit-login 0.99, fan checkout 0.99, p99 180ms", action_id=action.id))
-            action.probes = {"legit_login_success": 0.99, "fan_checkout_success": 0.99, "p99_ms": 180.0}
-            if action.action == "edge_rate_limit":
-                action.rollback = "stood down after attack end; fans restored"; action.transitions.append(ActionTransition(state="STOOD_DOWN", ts=scenario.attacks[0].end)); action.state="STOOD_DOWN"; audit.append(AuditEntry(ts=scenario.attacks[0].end, kind="revert", detail=action.rollback, action_id=action.id))
     return Timeline(
         scenario=scenario.name,
         ticks=ticks,
@@ -99,13 +84,34 @@ def _run_detector(
         raise ValueError("DETECTOR must be envelope or rules")
 
 
-def _set_mttr(scenario: Scenario, ticks: list[Tick], actions: list[ActionRecord]) -> None:
-    baseline = scenario.baselines["auth_login_rps"]
+def _plan_actions(scenario: Scenario, decisions: list[Decision], ticks: list[Tick]) -> tuple[list[ActionRecord], list[dict], list[AuditEntry]]:
+    actions: list[ActionRecord] = []; applied: list[dict] = []; audit: list[AuditEntry] = []
+    step = scenario.tick_seconds
+    for decision in decisions:
+        specs = {"credential-stuffing": ["edge_rate_limit"], "volumetric-attack": ["observe"], "retry-storm": ["circuit_break", "config_rollback"]}.get(decision.decision_class, [])
+        for spec in specs:
+            action, entry = action_for(decision, spec); actions.append(action); audit.append(entry)
+            if action.approved and spec == "edge_rate_limit":
+                t10 = decision.ts + timedelta(seconds=step); t100 = decision.ts + timedelta(seconds=4 * step)
+                action.transitions.extend([ActionTransition(state="ROLLOUT_10", ts=t10), ActionTransition(state="ROLLOUT_100", ts=t100)])
+                applied.extend([{"kind":spec,"ts":t10,"fraction":0.1},{"kind":spec,"ts":t100,"fraction":0.8}])
+            elif action.approved and spec == "circuit_break":
+                t10 = decision.ts + timedelta(seconds=step); action.transitions.append(ActionTransition(state="ROLLOUT_10", ts=t10)); applied.append({"kind":spec,"ts":t10,"fraction":1.0})
+    return actions, applied, audit
+
+
+def _finalize_probes(scenario: Scenario, ticks: list[Tick], actions: list[ActionRecord], audit: list[AuditEntry]) -> None:
     for action in actions:
-        for tick in ticks:
-            if tick.ts >= action.ts and tick.kpis["auth_login_rps"] < baseline * 2:
-                action.mttr_seconds = int((tick.ts - action.ts).total_seconds())
-                break
+        if not action.approved:
+            continue
+        probe_ts = action.ts + timedelta(seconds=3 * scenario.tick_seconds)
+        tick = next(item for item in ticks if item.ts >= probe_ts)
+        probes = {"legit_login_success": round(1.0 - tick.kpis["auth_failure_ratio"], 4), "fan_checkout_success": round(tick.kpis["conversion_coherence"], 4), "p99_ms": round(tick.kpis["p99_latency_ms"], 2)}
+        action.probes = probes; audit.append(AuditEntry(ts=tick.ts, kind="probe", detail=f"legit-login={probes['legit_login_success']:.4f}, fan-checkout={probes['fan_checkout_success']:.4f}, p99={probes['p99_ms']:.2f}ms", action_id=action.id))
+        verified_ts = action.ts + timedelta(seconds=5 * scenario.tick_seconds)
+        action.transitions.append(ActionTransition(state="VERIFIED", ts=verified_ts)); action.state="VERIFIED"; action.mttr_seconds=int((verified_ts-action.ts).total_seconds())
+        if action.action == "edge_rate_limit":
+            end = scenario.attacks[0].end; action.transitions.append(ActionTransition(state="STOOD_DOWN", ts=end)); action.state="STOOD_DOWN"; action.rollback="stood down after attack end; probe confirms fans restored"; audit.append(AuditEntry(ts=end,kind="revert",detail=action.rollback,action_id=action.id))
 
 
 def decisions_by_timestamp(decisions: list[Decision]) -> dict[str, list[Decision]]:

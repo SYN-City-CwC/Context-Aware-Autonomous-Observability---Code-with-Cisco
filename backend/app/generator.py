@@ -9,7 +9,7 @@ from app.scenario import all_context_events, resolve_prior_events
 
 
 def generate_ticks(
-    scenario: Scenario, seed: int | None = None, action_start_ts: datetime | None = None
+    scenario: Scenario, seed: int | None = None, applied_actions: list[dict] | None = None
 ) -> list[Tick]:
     rng = np.random.default_rng(scenario.seed if seed is None else seed)
     events = scenario.events
@@ -27,7 +27,7 @@ def generate_ticks(
         event_magnitudes=event_magnitudes,
         goal_magnitudes=goal_magnitudes,
         attack_magnitudes=attack_magnitudes,
-        action_start_ts=action_start_ts,
+        applied_actions=applied_actions or [],
         faults=scenario.faults,
     )
 
@@ -63,7 +63,7 @@ def generate_history(scenario: Scenario, seed: int | None = None) -> list[Tick]:
                 event_magnitudes=event_magnitudes,
                 goal_magnitudes=goal_magnitudes,
                 attack_magnitudes=attack_magnitudes,
-                action_start_ts=None,
+                applied_actions=[],
                 faults=[] if day_offset != 0 else scenario.faults,
             )
         )
@@ -84,7 +84,7 @@ def _generate_window(
     event_magnitudes: dict[tuple[str, str], float],
     goal_magnitudes: dict[tuple[str, datetime], tuple[float, float]],
     attack_magnitudes: dict[str, float],
-    action_start_ts: datetime | None = None,
+    applied_actions: list[dict] | None = None,
     faults: list[object] | None = None,
 ) -> list[Tick]:
     ticks: list[Tick] = []
@@ -100,9 +100,9 @@ def _generate_window(
         kpis = _baseline_values(scenario, current, rng)
         _apply_events(kpis, scenario, events, current, event_magnitudes, goal_magnitudes)
         _apply_load_reactions(kpis, scenario)
-        _apply_attacks(kpis, attacks, current, attack_magnitudes, action_start_ts)
+        _apply_attacks(kpis, attacks, current, attack_magnitudes, applied_actions or [])
         _apply_population_stats(kpis, scenario, attacks, current, attack_magnitudes)
-        _apply_faults(kpis, faults or [], current)
+        _apply_faults(kpis, faults or [], current, applied_actions or [])
         ticks.append(
             Tick(
                 ts=current,
@@ -269,20 +269,21 @@ def _apply_attacks(
     attacks: list[AttackSpec],
     ts: datetime,
     attack_magnitudes: dict[str, float],
-    action_start_ts: datetime | None,
+    applied_actions: list[dict],
 ) -> None:
     for attack in attacks:
         if not _is_active(ts, attack.start, attack.end):
             continue
         multiplier = attack_magnitudes[attack.id]
-        if attack.kind == "credential_stuffing" and action_start_ts is not None and ts >= action_start_ts:
-            multiplier = 1.0 + (multiplier - 1.0) * 0.2
+        if attack.kind == "credential_stuffing":
+            removal = max((item["fraction"] for item in applied_actions if item["kind"] == "edge_rate_limit" and ts >= item["ts"]), default=0.0)
+            multiplier = 1.0 + (multiplier - 1.0) * (1.0 - removal)
         kpis[attack.target_kpi] *= multiplier
         for impact in attack.additive_impacts:
             kpis[impact.kpi] += impact.value
 
 
-def _apply_faults(kpis: dict[str, float], faults: list[object], ts: datetime) -> None:
+def _apply_faults(kpis: dict[str, float], faults: list[object], ts: datetime, applied_actions: list[dict]) -> None:
     for fault in faults:
         if not _is_active(ts, fault.start, fault.end):
             continue
@@ -291,10 +292,13 @@ def _apply_faults(kpis: dict[str, float], faults: list[object], ts: datetime) ->
         elif isinstance(fault, TelemetrySilenceFault):
             kpis[fault.kpi] = 0.0
         elif isinstance(fault, RetryStormFault):
+            if any(item["kind"] == "config_rollback" and ts >= item["ts"] for item in applied_actions):
+                continue
             progress = min(1.0, (ts - fault.start).total_seconds() / 60.0)
-            kpis["retry_amplification"] = 1.0 + (fault.amplification - 1.0) * progress
-            kpis["p99_latency_ms"] += 2400.0 * progress
-            kpis["error_rate_5xx"] += 0.07 * progress
+            reduction = 0.2 if any(item["kind"] == "circuit_break" and ts >= item["ts"] for item in applied_actions) else 1.0
+            kpis["retry_amplification"] = 1.0 + (fault.amplification - 1.0) * progress * reduction
+            kpis["p99_latency_ms"] += 2400.0 * progress * reduction
+            kpis["error_rate_5xx"] += 0.07 * progress * reduction
 
 
 def _apply_population_stats(kpis: dict[str, float], scenario: Scenario, attacks: list[AttackSpec], ts: datetime, magnitudes: dict[str, float]) -> None:
