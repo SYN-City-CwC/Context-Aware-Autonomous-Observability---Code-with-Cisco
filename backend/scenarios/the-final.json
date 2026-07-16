@@ -9,37 +9,43 @@
       "id": "streaming_concurrents",
       "display_name": "Streaming concurrents",
       "unit": "viewers",
-      "baseline": 2000000
+      "baseline": 2000000,
+      "diurnal": 0.25
     },
     {
       "id": "edge_rps",
       "display_name": "Edge requests",
       "unit": "rps",
-      "baseline": 120000
+      "baseline": 120000,
+      "diurnal": 0.25
     },
     {
       "id": "checkout_rps",
       "display_name": "Checkout requests",
       "unit": "rps",
-      "baseline": 900
+      "baseline": 900,
+      "diurnal": 0.25
     },
     {
       "id": "auth_login_rps",
       "display_name": "Auth login requests",
       "unit": "rps",
-      "baseline": 1500
+      "baseline": 1500,
+      "diurnal": 0.25
     },
     {
       "id": "p99_latency_ms",
       "display_name": "p99 latency",
       "unit": "ms",
-      "baseline": 180
+      "baseline": 180,
+      "diurnal": 0.1
     },
     {
       "id": "error_rate_5xx",
       "display_name": "5xx error rate",
       "unit": "ratio",
-      "baseline": 0.004
+      "baseline": 0.004,
+      "diurnal": 0.0
     }
   ],
   "events": [
@@ -55,6 +61,13 @@
         "2026-07-16T20:23:00Z",
         "2026-07-16T21:12:00Z"
       ],
+      "goal_impact": {
+        "kpi": "edge_rps",
+        "low": 1.5,
+        "high": 2.5,
+        "decay_seconds_low": 120.0,
+        "decay_seconds_high": 240.0
+      },
       "expected_impacts": [
         {
           "kpi": "streaming_concurrents",
@@ -111,6 +124,254 @@
       ]
     }
   ],
+  "history": {
+    "days": 14,
+    "prior_events": [
+      {
+        "kind": "match",
+        "id": "GROUP-A",
+        "day_offset": -12,
+        "start": "19:20",
+        "end": "21:20",
+        "kickoff": "20:00",
+        "full_time": "21:20",
+        "pre_ramp_start": "19:20",
+        "goals": [
+          "20:34"
+        ],
+        "goal_impact": {
+          "kpi": "edge_rps",
+          "low": 1.5,
+          "high": 2.2,
+          "decay_seconds_low": 120.0,
+          "decay_seconds_high": 220.0
+        },
+        "expected_impacts": [
+          {
+            "kpi": "streaming_concurrents",
+            "mode": "multiplier",
+            "low": 8.0,
+            "high": 10.0
+          },
+          {
+            "kpi": "edge_rps",
+            "mode": "multiplier",
+            "low": 2.0,
+            "high": 2.7
+          }
+        ]
+      },
+      {
+        "kind": "campaign",
+        "id": "CAMP-WARMUP",
+        "day_offset": -11,
+        "start": "20:45",
+        "end": "20:58",
+        "expected_impacts": [
+          {
+            "kpi": "checkout_rps",
+            "mode": "multiplier",
+            "low": 2.0,
+            "high": 2.8
+          },
+          {
+            "kpi": "edge_rps",
+            "mode": "multiplier",
+            "low": 1.05,
+            "high": 1.15
+          }
+        ]
+      },
+      {
+        "kind": "match",
+        "id": "GROUP-B",
+        "day_offset": -9,
+        "start": "19:15",
+        "end": "21:30",
+        "kickoff": "20:00",
+        "full_time": "21:30",
+        "pre_ramp_start": "19:15",
+        "goals": [
+          "20:18",
+          "21:05"
+        ],
+        "goal_impact": {
+          "kpi": "edge_rps",
+          "low": 1.7,
+          "high": 2.4,
+          "decay_seconds_low": 120.0,
+          "decay_seconds_high": 240.0
+        },
+        "expected_impacts": [
+          {
+            "kpi": "streaming_concurrents",
+            "mode": "multiplier",
+            "low": 9.0,
+            "high": 12.0
+          },
+          {
+            "kpi": "edge_rps",
+            "mode": "multiplier",
+            "low": 2.2,
+            "high": 3.0
+          }
+        ]
+      },
+      {
+        "kind": "campaign",
+        "id": "CAMP-KIT",
+        "day_offset": -9,
+        "start": "21:02",
+        "end": "21:16",
+        "expected_impacts": [
+          {
+            "kpi": "checkout_rps",
+            "mode": "multiplier",
+            "low": 2.8,
+            "high": 3.6
+          },
+          {
+            "kpi": "edge_rps",
+            "mode": "multiplier",
+            "low": 1.1,
+            "high": 1.2
+          }
+        ]
+      },
+      {
+        "kind": "match",
+        "id": "GROUP-C",
+        "day_offset": -7,
+        "start": "19:30",
+        "end": "21:20",
+        "kickoff": "20:05",
+        "full_time": "21:20",
+        "pre_ramp_start": "19:30",
+        "goals": [
+          "20:42"
+        ],
+        "goal_impact": {
+          "kpi": "edge_rps",
+          "low": 1.5,
+          "high": 2.0,
+          "decay_seconds_low": 130.0,
+          "decay_seconds_high": 230.0
+        },
+        "expected_impacts": [
+          {
+            "kpi": "streaming_concurrents",
+            "mode": "multiplier",
+            "low": 8.0,
+            "high": 11.0
+          },
+          {
+            "kpi": "edge_rps",
+            "mode": "multiplier",
+            "low": 2.0,
+            "high": 2.8
+          }
+        ]
+      },
+      {
+        "kind": "campaign",
+        "id": "CAMP-SCARF",
+        "day_offset": -6,
+        "start": "21:10",
+        "end": "21:22",
+        "expected_impacts": [
+          {
+            "kpi": "checkout_rps",
+            "mode": "multiplier",
+            "low": 2.4,
+            "high": 3.2
+          },
+          {
+            "kpi": "edge_rps",
+            "mode": "multiplier",
+            "low": 1.05,
+            "high": 1.16
+          }
+        ]
+      },
+      {
+        "kind": "match",
+        "id": "SEMI-2026",
+        "day_offset": -4,
+        "start": "19:15",
+        "end": "21:35",
+        "kickoff": "20:00",
+        "full_time": "21:35",
+        "pre_ramp_start": "19:15",
+        "goals": [
+          "20:26",
+          "21:18"
+        ],
+        "goal_impact": {
+          "kpi": "edge_rps",
+          "low": 1.8,
+          "high": 2.5,
+          "decay_seconds_low": 140.0,
+          "decay_seconds_high": 240.0
+        },
+        "expected_impacts": [
+          {
+            "kpi": "streaming_concurrents",
+            "mode": "multiplier",
+            "low": 12.0,
+            "high": 15.0
+          },
+          {
+            "kpi": "edge_rps",
+            "mode": "multiplier",
+            "low": 2.5,
+            "high": 3.0
+          }
+        ]
+      },
+      {
+        "kind": "campaign",
+        "id": "CAMP-SEMI",
+        "day_offset": -4,
+        "start": "21:12",
+        "end": "21:24",
+        "expected_impacts": [
+          {
+            "kpi": "checkout_rps",
+            "mode": "multiplier",
+            "low": 3.0,
+            "high": 4.0
+          },
+          {
+            "kpi": "edge_rps",
+            "mode": "multiplier",
+            "low": 1.1,
+            "high": 1.2
+          }
+        ]
+      },
+      {
+        "kind": "campaign",
+        "id": "CAMP-FINAL-EVE",
+        "day_offset": -1,
+        "start": "21:08",
+        "end": "21:20",
+        "expected_impacts": [
+          {
+            "kpi": "checkout_rps",
+            "mode": "multiplier",
+            "low": 3.4,
+            "high": 4.3
+          },
+          {
+            "kpi": "edge_rps",
+            "mode": "multiplier",
+            "low": 1.08,
+            "high": 1.18
+          }
+        ]
+      }
+    ]
+  },
   "attacks": [
     {
       "kind": "credential_stuffing",

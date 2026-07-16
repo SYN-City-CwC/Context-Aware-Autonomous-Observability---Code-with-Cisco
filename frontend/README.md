@@ -1,12 +1,13 @@
-# SYN-City Stage 0 Dashboard
+# SYN-City Dashboard
 
-Simple React replay dashboard for the Stage 0 backend.
+Simple React replay dashboard for the backend. It shows KPI history, the Stage-1
+P10-P90 envelope band when available, and the live decision feed.
 
 ## Setup
 
 ```powershell
 cd frontend
-npm install
+pnpm install
 ```
 
 ## Run
@@ -23,7 +24,7 @@ Then start the frontend on port 5173:
 
 ```powershell
 cd frontend
-npm run dev
+pnpm run dev
 ```
 
 The frontend reads `VITE_BACKEND_URL` and defaults to `http://localhost:8000`.

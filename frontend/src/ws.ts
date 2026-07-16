@@ -16,20 +16,37 @@ export class ReplaySocket {
 
   connect(): void {
     this.close();
-    this.socket = new WebSocket(backendWsUrl());
-    this.socket.addEventListener("open", this.handlers.onOpen);
-    this.socket.addEventListener("close", this.handlers.onClose);
-    this.socket.addEventListener("error", this.handlers.onError);
-    this.socket.addEventListener("message", (event) => {
+    const socket = new WebSocket(backendWsUrl());
+    this.socket = socket;
+    socket.addEventListener("open", () => {
+      if (this.socket === socket) {
+        this.handlers.onOpen();
+      }
+    });
+    socket.addEventListener("close", () => {
+      if (this.socket === socket) {
+        this.handlers.onClose();
+      }
+    });
+    socket.addEventListener("error", () => {
+      if (this.socket === socket) {
+        this.handlers.onError();
+      }
+    });
+    socket.addEventListener("message", (event) => {
+      if (this.socket !== socket) {
+        return;
+      }
       this.handlers.onMessage(JSON.parse(event.data) as ReplayMessage);
     });
   }
 
   close(): void {
-    if (this.socket?.readyState === WebSocket.OPEN || this.socket?.readyState === WebSocket.CONNECTING) {
-      this.socket.close();
-    }
+    const socket = this.socket;
     this.socket = null;
+    if (socket?.readyState === WebSocket.OPEN || socket?.readyState === WebSocket.CONNECTING) {
+      socket.close();
+    }
   }
 
   send(command: Record<string, unknown>): void {

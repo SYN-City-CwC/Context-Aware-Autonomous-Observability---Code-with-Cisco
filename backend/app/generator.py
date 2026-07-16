@@ -5,29 +5,91 @@ from datetime import datetime, timedelta
 import numpy as np
 
 from app.models import AttackSpec, EventSpec, Scenario, Tick
+from app.scenario import all_context_events, resolve_prior_events
 
 
 def generate_ticks(scenario: Scenario, seed: int | None = None) -> list[Tick]:
     rng = np.random.default_rng(scenario.seed if seed is None else seed)
-    event_magnitudes = _draw_event_magnitudes(scenario, rng)
-    goal_magnitudes = _draw_goal_magnitudes(scenario, rng)
-    attack_magnitudes = _draw_attack_magnitudes(scenario, rng)
+    events = scenario.events
+    event_magnitudes = _draw_event_magnitudes(events, rng)
+    goal_magnitudes = _draw_goal_magnitudes(events, rng)
+    attack_magnitudes = _draw_attack_magnitudes(scenario.attacks, rng)
+    return _generate_window(
+        scenario=scenario,
+        start=scenario.sim_start,
+        end=scenario.sim_end,
+        events=events,
+        attacks=scenario.attacks,
+        rng=rng,
+        event_magnitudes=event_magnitudes,
+        goal_magnitudes=goal_magnitudes,
+        attack_magnitudes=attack_magnitudes,
+    )
+
+
+def generate_history(scenario: Scenario, seed: int | None = None) -> list[Tick]:
+    if scenario.history is None:
+        raise ValueError("scenario history block is required for training")
+    rng = np.random.default_rng(scenario.seed if seed is None else seed)
+    prior_events = resolve_prior_events(scenario)
+    all_events = [*prior_events, *scenario.events]
+    event_magnitudes = _draw_event_magnitudes(all_events, rng)
+    goal_magnitudes = _draw_goal_magnitudes(all_events, rng)
+    attack_magnitudes = _draw_attack_magnitudes(scenario.attacks, rng)
 
     ticks: list[Tick] = []
-    current = scenario.sim_start
-    while current < scenario.sim_end:
-        active_events = [
-            event.id for event in scenario.events if _is_active(current, event.start, event.end)
+    first_offset = -(scenario.history.days - 1)
+    for day_offset in range(first_offset, 1):
+        start = scenario.sim_start + timedelta(days=day_offset)
+        end = scenario.sim_end + timedelta(days=day_offset)
+        day_events = [
+            event for event in all_events if start.date() <= event.start.date() <= end.date()
         ]
+        day_attacks = scenario.attacks if day_offset == 0 else []
+        ticks.extend(
+            _generate_window(
+                scenario=scenario,
+                start=start,
+                end=end,
+                events=day_events,
+                attacks=day_attacks,
+                rng=rng,
+                event_magnitudes=event_magnitudes,
+                goal_magnitudes=goal_magnitudes,
+                attack_magnitudes=attack_magnitudes,
+            )
+        )
+    return ticks
+
+
+def context_events_for_training(scenario: Scenario) -> list[EventSpec]:
+    return all_context_events(scenario)
+
+
+def _generate_window(
+    scenario: Scenario,
+    start: datetime,
+    end: datetime,
+    events: list[EventSpec],
+    attacks: list[AttackSpec],
+    rng: np.random.Generator,
+    event_magnitudes: dict[tuple[str, str], float],
+    goal_magnitudes: dict[tuple[str, datetime], tuple[float, float]],
+    attack_magnitudes: dict[str, float],
+) -> list[Tick]:
+    ticks: list[Tick] = []
+    current = start
+    while current < end:
+        active_events = [event.id for event in events if _is_active(current, event.start, event.end)]
         truth = [
             f"attack:{attack.id}"
-            for attack in scenario.attacks
+            for attack in attacks
             if _is_active(current, attack.start, attack.end)
         ]
-        kpis = _baseline_values(scenario, rng)
-        _apply_events(kpis, scenario, current, event_magnitudes, goal_magnitudes)
+        kpis = _baseline_values(scenario, current, rng)
+        _apply_events(kpis, scenario, events, current, event_magnitudes, goal_magnitudes)
         _apply_load_reactions(kpis, scenario)
-        _apply_attacks(kpis, scenario, current, attack_magnitudes)
+        _apply_attacks(kpis, attacks, current, attack_magnitudes)
         ticks.append(
             Tick(
                 ts=current,
@@ -40,55 +102,71 @@ def generate_ticks(scenario: Scenario, seed: int | None = None) -> list[Tick]:
     return ticks
 
 
-def _baseline_values(scenario: Scenario, rng: np.random.Generator) -> dict[str, float]:
+def _baseline_values(
+    scenario: Scenario, ts: datetime, rng: np.random.Generator
+) -> dict[str, float]:
     values: dict[str, float] = {}
     for kpi in scenario.kpis:
         noise = float(np.clip(rng.normal(0.0, 0.012), -0.03, 0.03))
-        values[kpi.id] = kpi.baseline * (1.0 + noise)
+        values[kpi.id] = kpi.baseline * _diurnal_multiplier(ts, kpi.diurnal) * (1.0 + noise)
     return values
 
 
+def _diurnal_multiplier(ts: datetime, amplitude: float) -> float:
+    if amplitude <= 0.0:
+        return 1.0
+    minute = ts.hour * 60 + ts.minute + ts.second / 60.0
+    phase = 2.0 * np.pi * (minute - 14 * 60) / (24 * 60)
+    return float(1.0 + amplitude * np.sin(phase))
+
+
 def _draw_event_magnitudes(
-    scenario: Scenario, rng: np.random.Generator
+    events: list[EventSpec], rng: np.random.Generator
 ) -> dict[tuple[str, str], float]:
     magnitudes: dict[tuple[str, str], float] = {}
-    for event in scenario.events:
+    for event in events:
         for impact in event.expected_impacts:
             magnitudes[(event.id, impact.kpi)] = float(rng.uniform(impact.low, impact.high))
     return magnitudes
 
 
 def _draw_goal_magnitudes(
-    scenario: Scenario, rng: np.random.Generator
+    events: list[EventSpec], rng: np.random.Generator
 ) -> dict[tuple[str, datetime], tuple[float, float]]:
     magnitudes: dict[tuple[str, datetime], tuple[float, float]] = {}
-    for event in scenario.events:
-        if event.kind != "match":
+    for event in events:
+        if event.kind != "match" or event.goal_impact is None:
             continue
         for goal in event.goals:
-            extra_multiplier = float(rng.uniform(1.5, 2.5))
-            decay_seconds = float(rng.uniform(120.0, 240.0))
+            extra_multiplier = float(rng.uniform(event.goal_impact.low, event.goal_impact.high))
+            decay_seconds = float(
+                rng.uniform(
+                    event.goal_impact.decay_seconds_low,
+                    event.goal_impact.decay_seconds_high,
+                )
+            )
             magnitudes[(event.id, goal)] = (extra_multiplier, decay_seconds)
     return magnitudes
 
 
 def _draw_attack_magnitudes(
-    scenario: Scenario, rng: np.random.Generator
+    attacks: list[AttackSpec], rng: np.random.Generator
 ) -> dict[str, float]:
     return {
         attack.id: float(rng.uniform(attack.multiplier.low, attack.multiplier.high))
-        for attack in scenario.attacks
+        for attack in attacks
     }
 
 
 def _apply_events(
     kpis: dict[str, float],
     scenario: Scenario,
+    events: list[EventSpec],
     ts: datetime,
     event_magnitudes: dict[tuple[str, str], float],
     goal_magnitudes: dict[tuple[str, datetime], tuple[float, float]],
 ) -> None:
-    for event in scenario.events:
+    for event in events:
         for impact in event.expected_impacts:
             shape = _event_shape(event, ts)
             if shape <= 0.0:
@@ -136,7 +214,7 @@ def _apply_goal_spikes(
     goal_magnitudes: dict[tuple[str, datetime], tuple[float, float]],
     baselines: dict[str, float],
 ) -> None:
-    if event.kind != "match":
+    if event.kind != "match" or event.goal_impact is None:
         return
     for goal in event.goals:
         if ts < goal:
@@ -146,8 +224,8 @@ def _apply_goal_spikes(
         if elapsed > decay_seconds * 2:
             continue
         extra = extra_multiplier * float(np.exp(-elapsed / decay_seconds))
-        if "edge_rps" in kpis and "edge_rps" in baselines:
-            kpis["edge_rps"] += baselines["edge_rps"] * extra
+        if event.goal_impact.kpi in kpis and event.goal_impact.kpi in baselines:
+            kpis[event.goal_impact.kpi] += baselines[event.goal_impact.kpi] * extra
 
 
 def _apply_load_reactions(kpis: dict[str, float], scenario: Scenario) -> None:
@@ -169,11 +247,11 @@ def _apply_load_reactions(kpis: dict[str, float], scenario: Scenario) -> None:
 
 def _apply_attacks(
     kpis: dict[str, float],
-    scenario: Scenario,
+    attacks: list[AttackSpec],
     ts: datetime,
     attack_magnitudes: dict[str, float],
 ) -> None:
-    for attack in scenario.attacks:
+    for attack in attacks:
         if not _is_active(ts, attack.start, attack.end):
             continue
         kpis[attack.target_kpi] *= attack_magnitudes[attack.id]

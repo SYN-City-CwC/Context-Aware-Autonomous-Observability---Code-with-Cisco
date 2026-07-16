@@ -38,12 +38,13 @@ export interface Tick {
   ts: string;
   kpis: Record<string, number>;
   active_events: string[];
+  envelope?: Record<string, { p10: number; p90: number }>;
 }
 
 export interface Decision {
   ts: string;
   verdict: Verdict;
-  class: "expected-event-traffic" | "unexplained-deviation";
+  class: "expected-event-traffic" | "unexplained-deviation" | "unexplained-drop";
   reason: string;
   confidence: number;
   evidence: {
@@ -57,6 +58,10 @@ export interface Decision {
       low: number;
       high: number;
     } | null;
+    p10?: number;
+    p50?: number;
+    p90?: number;
+    context_blind_p90?: number;
   };
 }
 

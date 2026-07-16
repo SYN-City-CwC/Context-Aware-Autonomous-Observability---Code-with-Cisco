@@ -11,6 +11,7 @@ class KpiSpec(BaseModel):
     display_name: str
     unit: str
     baseline: float
+    diurnal: float = 0.0
 
 
 class ExpectedImpact(BaseModel):
@@ -18,6 +19,14 @@ class ExpectedImpact(BaseModel):
     mode: Literal["multiplier"]
     low: float
     high: float
+
+
+class GoalImpact(BaseModel):
+    kpi: str
+    low: float
+    high: float
+    decay_seconds_low: float
+    decay_seconds_high: float
 
 
 class AttackMultiplier(BaseModel):
@@ -40,6 +49,26 @@ class EventSpec(BaseModel):
     full_time: datetime | None = None
     pre_ramp_start: datetime | None = None
     goals: list[datetime] = Field(default_factory=list)
+    goal_impact: GoalImpact | None = None
+
+
+class PriorEventSpec(BaseModel):
+    kind: Literal["match", "campaign"]
+    id: str
+    day_offset: int
+    start: str
+    end: str
+    expected_impacts: list[ExpectedImpact]
+    kickoff: str | None = None
+    full_time: str | None = None
+    pre_ramp_start: str | None = None
+    goals: list[str] = Field(default_factory=list)
+    goal_impact: GoalImpact | None = None
+
+
+class HistorySpec(BaseModel):
+    days: int
+    prior_events: list[PriorEventSpec] = Field(default_factory=list)
 
 
 class AttackSpec(BaseModel):
@@ -60,6 +89,7 @@ class Scenario(BaseModel):
     tick_seconds: int
     kpis: list[KpiSpec]
     events: list[EventSpec]
+    history: HistorySpec | None = None
     attacks: list[AttackSpec] = Field(default_factory=list)
     faults: list[dict] = Field(default_factory=list)
 
@@ -73,6 +103,7 @@ class Tick(BaseModel):
     kpis: dict[str, float]
     active_events: list[str]
     truth: list[str] = Field(default_factory=list)
+    envelope: dict[str, "EnvelopeBand"] | None = None
 
 
 class DetectorTick(BaseModel):
@@ -87,6 +118,11 @@ class DeclaredRange(BaseModel):
     high: float
 
 
+class EnvelopeBand(BaseModel):
+    p10: float
+    p90: float
+
+
 class Evidence(BaseModel):
     kpi: str
     observed: float
@@ -94,6 +130,10 @@ class Evidence(BaseModel):
     ratio: float
     active_events: list[str]
     declared_range: DeclaredRange | None = None
+    p10: float | None = None
+    p50: float | None = None
+    p90: float | None = None
+    context_blind_p90: float | None = None
 
 
 class Decision(BaseModel):
@@ -101,9 +141,9 @@ class Decision(BaseModel):
 
     ts: datetime
     verdict: Literal["SUPPRESS", "ALERT"]
-    decision_class: Literal["expected-event-traffic", "unexplained-deviation"] = Field(
-        alias="class"
-    )
+    decision_class: Literal[
+        "expected-event-traffic", "unexplained-deviation", "unexplained-drop"
+    ] = Field(alias="class")
     reason: str
     confidence: float
     evidence: Evidence

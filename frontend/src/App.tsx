@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  Area,
+  ComposedChart,
   Line,
-  LineChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -24,6 +25,8 @@ type Highlight = {
 type ChartPoint = {
   ts: string;
   value: number;
+  p10: number | null;
+  band: number | null;
 };
 
 export default function App() {
@@ -162,7 +165,7 @@ export default function App() {
     <div className="app-shell">
       <header className="topbar">
         <div>
-          <p className="eyebrow">SYN-City Stage 0</p>
+          <p className="eyebrow">SYN-City Stage 1</p>
           <h1>{scenario?.name ?? "connecting"}</h1>
         </div>
         <div className="clock-block">
@@ -250,6 +253,10 @@ function KpiStrip({
       ticks.slice(-windowSize).map((tick) => ({
         ts: formatTime(tick.ts),
         value: tick.kpis[kpi.id],
+        p10: tick.envelope?.[kpi.id]?.p10 ?? null,
+        band: tick.envelope?.[kpi.id]
+          ? tick.envelope[kpi.id].p90 - tick.envelope[kpi.id].p10
+          : null,
       })),
     [kpi.id, ticks, windowSize],
   );
@@ -266,16 +273,37 @@ function KpiStrip({
       </div>
       <div className="chart-wrap">
         <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={data}>
+          <ComposedChart data={data}>
             <XAxis dataKey="ts" hide />
             <YAxis hide domain={["dataMin", "dataMax"]} />
             <Tooltip
               contentStyle={{ background: "#111827", border: "1px solid #263241", color: "#e5edf5" }}
-              formatter={(value) => [formatKpiValue(Number(value), kpi.unit), kpi.display_name]}
+              formatter={(value, name) => [
+                formatKpiValue(Number(value), kpi.unit),
+                name === "value" ? kpi.display_name : "expected envelope",
+              ]}
               labelFormatter={(value) => `Sim ${value}`}
             />
+            <Area
+              type="monotone"
+              dataKey="p10"
+              stackId="envelope"
+              stroke="none"
+              fill="transparent"
+              isAnimationActive={false}
+            />
+            <Area
+              type="monotone"
+              dataKey="band"
+              stackId="envelope"
+              stroke="none"
+              fill="#34506d"
+              fillOpacity={0.32}
+              connectNulls
+              isAnimationActive={false}
+            />
             <Line type="monotone" dataKey="value" stroke="#89b4fa" dot={false} strokeWidth={2} isAnimationActive={false} />
-          </LineChart>
+          </ComposedChart>
         </ResponsiveContainer>
       </div>
     </article>
@@ -291,7 +319,7 @@ function DecisionCard({ decision }: { decision: Decision }) {
       </div>
       <div className="decision-main">
         <strong>{decision.evidence.kpi}</strong>
-        <span>{decision.evidence.ratio.toFixed(1)}x baseline</span>
+        <span>{decision.evidence.ratio.toFixed(1)}x expected</span>
         <span>{Math.round(decision.confidence * 100)}% confidence</span>
       </div>
       <p>{decision.reason}</p>

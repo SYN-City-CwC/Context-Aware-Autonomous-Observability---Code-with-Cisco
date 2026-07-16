@@ -24,6 +24,7 @@ venv/
 __pycache__/
 *.pyc
 .pytest_cache/
+backend/models/
 
 # Node
 node_modules/
