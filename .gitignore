@@ -26,6 +26,7 @@ __pycache__/
 *.pyc
 .pytest_cache/
 backend/models/
+backend/cache/
 
 # Node
 node_modules/

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from contextlib import asynccontextmanager
 from typing import Any
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
@@ -14,9 +15,16 @@ from app.reasoning import narrate_records
 
 
 SCENARIO = load_scenario()
-TIMELINE = build_timeline(SCENARIO)
+TIMELINE: Timeline | None = None
 
-app = FastAPI(title="SYN-City Stage 0 Backend")
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    global TIMELINE
+    TIMELINE = build_timeline(SCENARIO)
+    yield
+
+app = FastAPI(title="SYN-City Stage 0 Backend", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173"],
@@ -28,7 +36,7 @@ app.add_middleware(
 
 @app.get("/api/health")
 def health() -> dict[str, Any]:
-    return {"status": "ok", "scenario": SCENARIO.name, "ticks": len(TIMELINE.ticks)}
+    return {"status": "ok", "scenario": SCENARIO.name, "ticks": len(_timeline().ticks)}
 
 
 @app.get("/api/scenario")
@@ -40,29 +48,29 @@ def scenario() -> dict[str, Any]:
 def timeline(truth: int = 0) -> dict[str, Any]:
     tick_payload = [
         tick.model_dump(mode="json") if truth == 1 else public_tick(tick)
-        for tick in TIMELINE.ticks
+        for tick in _timeline().ticks
     ]
     return {
         "scenario": scenario_summary(SCENARIO),
         "ticks": tick_payload,
         "decisions": [
             decision.model_dump(mode="json", by_alias=True)
-            for decision in TIMELINE.decisions
+            for decision in _timeline().decisions
         ],
-        "actions": [action.model_dump(mode="json") for action in TIMELINE.actions],
+        "actions": [action.model_dump(mode="json") for action in _timeline().actions],
     }
 
 
 @app.get("/api/rca")
 def rca(narrate: int = 0) -> list[dict[str, Any]]:
-    records = narrate_records(TIMELINE.rca_records) if narrate == 1 else TIMELINE.rca_records
+    records = narrate_records(_timeline().rca_records) if narrate == 1 else _timeline().rca_records
     return [record.model_dump(mode="json") for record in records]
 
 
 @app.websocket("/ws/replay")
 async def replay(websocket: WebSocket) -> None:
     await websocket.accept()
-    session = ReplaySession(TIMELINE)
+    session = ReplaySession(_timeline())
     await websocket.send_json({"type": "hello", "scenario": scenario_summary(SCENARIO)})
     try:
         while True:
@@ -93,6 +101,12 @@ def scenario_summary(scenario_model: Scenario) -> dict[str, Any]:
         "kpis": [kpi.model_dump() for kpi in scenario_model.kpis],
         "events": [_event_summary(event) for event in scenario_model.events],
     }
+
+
+def _timeline() -> Timeline:
+    if TIMELINE is None:
+        raise RuntimeError("timeline is not ready")
+    return TIMELINE
 
 
 def _event_summary(event: EventSpec) -> dict[str, Any]:

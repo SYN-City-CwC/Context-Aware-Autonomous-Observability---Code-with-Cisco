@@ -1,7 +1,11 @@
 from __future__ import annotations
 
 from collections import defaultdict
+import hashlib
+import json
 import os
+from pathlib import Path
+from time import perf_counter
 
 from app.actions import maybe_act
 from app.detector import run_detector
@@ -14,7 +18,25 @@ from app.rca import build_rca_records
 from app.triage import route_decisions
 
 
+CACHE_VERSION = "2"
+CACHE_DIR = Path(__file__).resolve().parents[1] / "cache"
+
+
 def build_timeline(scenario: Scenario, seed: int | None = None) -> Timeline:
+    cache_path = _cache_path(scenario, seed)
+    if cache_path.exists():
+        print(f"timeline cache hit: {cache_path.name}", flush=True)
+        return Timeline.model_validate_json(cache_path.read_text(encoding="utf-8"))
+    started = perf_counter()
+    print("timeline build: scenario loaded", flush=True)
+    timeline = _build_timeline(scenario, seed)
+    CACHE_DIR.mkdir(exist_ok=True)
+    cache_path.write_text(timeline.model_dump_json(), encoding="utf-8")
+    print(f"timeline ready: {len(timeline.ticks)} ticks, {len(timeline.decisions)} decisions ({perf_counter() - started:.1f}s)", flush=True)
+    return timeline
+
+
+def _build_timeline(scenario: Scenario, seed: int | None = None) -> Timeline:
     ghost_ticks = generate_ticks(scenario, seed=seed)
     detector_mode = os.environ.get("DETECTOR", "envelope").lower()
     _, first_pass = _run_detector(scenario, ghost_ticks, detector_mode)
@@ -38,6 +60,12 @@ def build_timeline(scenario: Scenario, seed: int | None = None) -> Timeline:
         actions=actions,
         rca_records=build_rca_records(decisions, actions),
     )
+
+
+def _cache_path(scenario: Scenario, seed: int | None) -> Path:
+    meta = DEFAULT_MODEL_DIR / "meta.json"
+    payload = json.dumps({"scenario": scenario.model_dump(mode="json"), "seed": seed, "meta": meta.read_text(encoding="utf-8"), "version": CACHE_VERSION}, sort_keys=True)
+    return CACHE_DIR / f"timeline-{hashlib.sha256(payload.encode()).hexdigest()[:16]}.json"
 
 
 def _run_detector(
