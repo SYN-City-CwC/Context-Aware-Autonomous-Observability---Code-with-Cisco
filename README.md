@@ -22,3 +22,7 @@ flowchart LR
 ## Not yet built
 
 - Full action machinery and automated regression tests.
+
+## External validation
+
+The committed normal-traffic CSV benchmark currently reports a 7.0000% false-positive rate (350 alerts across 5,000 row-minutes), dominated by `auth_failure_ratio`; reproduce it with `cd backend && python -m app.eval_csv`. The CSV loader median-normalizes volume, latency, and count channels to scenario baselines while retaining scale-free ratios. To add it as clean training history only, run `python -m app.train --csv backend/data/context_aware_observability_sample_5000_v2.csv`.

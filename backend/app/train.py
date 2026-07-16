@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import argparse
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -10,7 +11,8 @@ import lightgbm as lgb
 from app.features import CONTEXT_FEATURES, build_feature_frame
 from app.deep import train_deep_model
 from app.generator import generate_history
-from app.models import Scenario
+from app.csv_loader import load_csv_ticks
+from app.models import Scenario, Tick
 from app.scenario import load_scenario
 
 
@@ -24,6 +26,7 @@ def train_models(
     model_dir: Path | None = None,
     n_estimators: int = 120,
     verbose: bool = True,
+    csv_path: str | None = None,
 ) -> dict[str, Any]:
     scenario_model = scenario or load_scenario()
     output_dir = model_dir or DEFAULT_MODEL_DIR
@@ -39,6 +42,13 @@ def train_models(
     validation_indices = [
         i for i, tick in enumerate(ticks) if tick.ts.date().isoformat() in validation_days
     ]
+    if csv_path is not None:
+        csv_ticks, covered = load_csv_ticks(csv_path, scenario_model)
+        start = len(ticks)
+        ticks.extend(Tick(ts=tick.ts, kpis={**scenario_model.baselines, **tick.kpis}, active_events=[], truth=[]) for tick in csv_ticks)
+        train_indices.extend(range(start, len(ticks)))
+        if verbose:
+            print(f"CSV augmentation: {len(csv_ticks)} clean ticks, coverage {', '.join(covered)}")
     meta: dict[str, Any] = {
         "scenario": scenario_model.name,
         "seed": scenario_model.seed,
@@ -141,7 +151,10 @@ def _fit_quantile_model(
 
 
 def main() -> None:
-    train_models()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--csv")
+    args = parser.parse_args()
+    train_models(csv_path=args.csv)
 
 
 if __name__ == "__main__":
