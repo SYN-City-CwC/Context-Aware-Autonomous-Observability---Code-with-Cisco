@@ -1,0 +1,35 @@
+# Phase 1 submission docs (source material, not demo code)
+*.docx
+*.pdf
+~$*
+
+# Agent environment / workflow files (Claude + Codex)
+AGENTS.md
+CLAUDE.md
+.claude/
+.codex/
+docs/context/
+docs/memory/
+docs/tasks/
+docs/reports/
+docs/reviews/
+
+# Secrets
+.env
+.env.*
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Node
+node_modules/
+dist/
+.vite/
+
+# OS / editor
+.DS_Store
+Thumbs.db
